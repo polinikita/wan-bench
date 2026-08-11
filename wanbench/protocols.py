@@ -1,0 +1,254 @@
+"""Protocol-specific committee, parameter, and launch adapters."""
+
+from __future__ import annotations
+
+import abc
+import json
+
+from .config import RunConfig
+from .ssh import Host
+
+# Vantage host-network port layout.
+VANTAGE_PORTS = {
+    "consensus_to_consensus": 6000,
+    "primary_to_primary": 6001,
+    "worker_to_primary": 6002,
+    "primary_metrics": 6003,
+    "primary_to_worker": 6004,
+    "transactions": 6005,
+    "worker_to_worker": 6006,
+    "worker_metrics": 6007,
+}
+CONSENSUS_PORT = VANTAGE_PORTS["primary_to_primary"]
+WORKER_PORT = VANTAGE_PORTS["worker_to_worker"]
+TX_PORT = VANTAGE_PORTS["transactions"]
+
+
+class ProtocolAdapter(abc.ABC):
+    def __init__(self, cfg: RunConfig):
+        self.cfg = cfg
+
+    @abc.abstractmethod
+    def keygen_cmd(self, index: int) -> str:
+        """`docker run <image> ...` whose stdout is node `index`'s key JSON."""
+
+    @abc.abstractmethod
+    def committee(self, hosts: list[Host], pubkeys: list[dict]) -> dict:
+        """Committee document from private IPs + per-node pubkeys."""
+
+    @abc.abstractmethod
+    def run_cmd(self, host: Host, hosts: list[Host]) -> str:
+        """Return the container command for one node."""
+
+    def parameters(self) -> dict | None:
+        """Return parameters.json content, or None for generated parameters."""
+        return None
+
+    def ports(self) -> dict[str, int]:
+        return {"consensus": CONSENSUS_PORT, "worker": WORKER_PORT,
+                "tx": TX_PORT, "metrics": self.cfg.metrics_port}
+
+
+def _docker_prefix(cfg: RunConfig, idx: int, entrypoint: str, env_extra: str = "") -> str:
+    # Each node receives an equal share of the aggregate rate.
+    if cfg.rate < cfg.nodes or cfg.rate % cfg.nodes:
+        raise ValueError(
+            f"aggregate rate {cfg.rate} must be >= and divisible by {cfg.nodes} nodes")
+    rate_each = cfg.rate // cfg.nodes
+    ep = f"--entrypoint {entrypoint} " if entrypoint else ""
+    # n=100 exceeds Docker's default 1024-file limit with full-mesh connections.
+    return (f"docker run -d --name wanbench-node --restart no --network host "
+            f"--ulimit nofile=65536:65536 "
+            f"--cap-add NET_ADMIN -v /opt/wanbench:/wanbench "
+            f"-e NODE_INDEX={idx} -e N_NODES={cfg.nodes} "
+            f"-e RATE={rate_each} -e TX_SIZE={cfg.tx_size} "
+            f"-e METRICS_PORT={cfg.metrics_port} {env_extra} {ep}{cfg.image}")
+
+
+class Vantage(ProtocolAdapter):
+    def keygen_cmd(self, index: int) -> str:
+        return (f"docker run --rm --entrypoint node {self.cfg.image} "
+                f"generate_keys --filename /dev/stdout")
+
+    def committee(self, hosts: list[Host], pubkeys: list[dict]) -> dict:
+        # config::Authority requires every address below.
+        p = VANTAGE_PORTS
+        authorities = {}
+        for h, pk in zip(hosts, pubkeys):
+            ip = h.private_ip
+            authorities[pk["name"]] = {
+                "stake": 1,
+                "consensus": {
+                    "consensus_to_consensus": f"{ip}:{p['consensus_to_consensus']}"},
+                "primary": {"primary_to_primary": f"{ip}:{p['primary_to_primary']}",
+                            "worker_to_primary": f"{ip}:{p['worker_to_primary']}",
+                            "metrics": f"{ip}:{p['primary_metrics']}"},
+                "workers": {"0": {"primary_to_worker": f"{ip}:{p['primary_to_worker']}",
+                                  "transactions": f"{ip}:{p['transactions']}",
+                                  "worker_to_worker": f"{ip}:{p['worker_to_worker']}",
+                                  "metrics": f"{ip}:{p['worker_metrics']}"}},
+            }
+        return {"authorities": authorities}
+
+    def parameters(self) -> dict:
+        # Complete config::Parameters document for the Vantage binary.
+        return {
+            "timeout_delay": 1000,
+            "header_size": 1000,
+            "max_header_delay": self.cfg.max_header_delay_ms,
+            "gc_depth": 50,
+            "sync_retry_delay": 5000,
+            "sync_retry_nodes": 3,
+            "batch_size": 500_000,
+            "max_batch_delay": 20,
+            "use_optimistic_tips": True,
+            "use_parallel_proposals": True,
+            "k": 4,
+            "use_fast_path": True,
+            "fast_path_timeout": 500,
+            "use_ride_share": False,
+            "car_timeout": 2000,
+            "all_to_all": self.cfg.all_to_all,
+            "simulate_asynchrony": False,
+            "asynchrony_start": 20_000,
+            "asynchrony_duration": 10_000,
+            "protocol": "vantage",
+            "tx_mode": self.cfg.tx_mode,
+            "max_block_payload": 16,
+            "delta_ms": self.cfg.delta_ms,
+            # Transactions submitted before this timestamp are excluded.
+            "metrics_active_at_ms": self.cfg.metrics_active_at_ms,
+            "vantage_gc_window_views": 200,
+            "simpleit_gc_window_rounds": 50,
+            "ack_watermarks": True,
+            "ack_watermark_period_ms": 50,
+            "digest_statements": True,
+            "echo_avail_claims": self.cfg.echo_avail_claims,
+            "sequence_checkpoints": self.cfg.sequence_checkpoints,
+            "sequence_install_enabled": self.cfg.sequence_install_enabled,
+            "sequence_checkpoint_interval_views": (
+                self.cfg.sequence_checkpoint_interval_views
+            ),
+            "sequence_sync_min_gap_views": self.cfg.sequence_sync_min_gap_views,
+            "sequence_sync_chunk_outcomes": self.cfg.sequence_sync_chunk_outcomes,
+            "sequence_sync_chunk_outcome_items": (
+                self.cfg.sequence_sync_chunk_outcome_items
+            ),
+            # Zero disables internal latency when host netem is active.
+            "mimic_latency_ms": None if self.cfg.wan.mode == "mimic" else 0,
+            "batch_messages": True,
+            "batch_max_bytes": 65_536,
+            "batch_max_delay_ms": 5,
+            "withhold_senders": 0,
+            "withhold_at_ms": None,
+            "withhold_for_ms": 30_000,
+            "resume_check_period_ms": 1000,
+            "resume_backoff_ms": 4000,
+            "resume_batch": 64,
+            "reconnect_replay": True,
+            "retry_backoff_max_ms": 2000,
+        }
+
+    ENTRYPOINT = "/usr/local/bin/wanbench-entrypoint.sh"
+
+    def run_cmd(self, host: Host, hosts: list[Host]) -> str:
+        # Vantage accepts protocol settings through parameters.json, not argv.
+        if self.cfg.protocol_flags:
+            raise ValueError(
+                f"vantage's `node run` rejects extra argv {self.cfg.protocol_flags}; "
+                f"express the knob in the adapter's parameters() instead")
+        own = f"{host.private_ip}:{TX_PORT}"
+        peers = " ".join(f"{h.private_ip}:{TX_PORT}" for h in hosts)
+        env = f"-e OWN_TX_ADDR={own} -e PEER_TX_ADDRS='{peers}' -e TX_MODE={self.cfg.tx_mode}"
+        # Clients start before the node metrics gate to warm the transport.
+        if self.cfg.client_activate_at_ms is not None:
+            env += f" -e ACTIVATE_AT_MS={self.cfg.client_activate_at_ms}"
+        return _docker_prefix(self.cfg, host.index, self.ENTRYPOINT, env)
+
+
+# Vantage-binary variants differ only in their parameters.
+class _VantageBinaryProtocol(Vantage):
+    """A `node`-binary assembly that differs from vantage only in `parameters()`."""
+
+    PROTOCOL: str = ""
+
+    def parameters(self) -> dict:
+        p = super().parameters()
+        p["protocol"] = self.PROTOCOL
+        return p
+
+
+class AutobahnSeamless(_VantageBinaryProtocol):
+    PROTOCOL = "autobahn-seamless"
+
+
+class AutobahnOptimistic(_VantageBinaryProtocol):
+    PROTOCOL = "autobahn-optimistic"
+
+
+# Simple-IT uses (d_s + d_t) * Delta from Table 3 of arXiv:2606.14404.
+class _SimpleIt(_VantageBinaryProtocol):
+    RBC_DELAYS: tuple[int, int] = (0, 0)   # (d_s, d_t) from Table 3
+
+    def parameters(self) -> dict:
+        p = super().parameters()
+        d_s, d_t = self.RBC_DELAYS
+        p["timeout_delay"] = (d_s + d_t) * self.cfg.delta_ms
+        return p
+
+
+class SimpleIt(_SimpleIt):
+    """Simple-IT over Opt-RBC with an 8*Delta timer."""
+
+    PROTOCOL = "simple-it"
+    RBC_DELAYS = (4, 4)
+
+
+class SimpleItBracha(_SimpleIt):
+    """Simple-IT over Bracha-RBC with a 5*Delta timer."""
+
+    PROTOCOL = "simple-it-bracha"
+    RBC_DELAYS = (3, 2)
+
+
+class Starfish(ProtocolAdapter):
+    def keygen_cmd(self, index: int) -> str:
+        raise NotImplementedError("starfish uses committee-wide benchmark-genesis")
+
+    def committee(self, hosts: list[Host], pubkeys: list[dict]) -> dict:
+        raise NotImplementedError("starfish committee is produced by benchmark-genesis")
+
+    def run_cmd(self, host: Host, hosts: list[Host]) -> str:
+        flags = " ".join(self.cfg.protocol_flags)
+        return (_docker_prefix(self.cfg, host.index, "starfish") +
+                f" run --authority {host.index} "
+                f"--committee-path /wanbench/committee.yaml "
+                f"--public-config-path /wanbench/public-config.yaml "
+                f"--private-config-path /wanbench/private-config-{host.index}.yaml "
+                f"--parameters-path /wanbench/parameters.yaml {flags}")
+
+    def genesis_cmd(self, private_ips: list[str]) -> str:
+        ips = " ".join(private_ips)
+        return (f"docker run --rm -v /opt/wanbench:/wanbench {self.cfg.image} "
+                f"benchmark-genesis --ips {ips} --working-directory /wanbench "
+                f"--node-parameters-path /wanbench/node-parameters.yaml")
+
+
+def uses_vantage_ports(protocol: str) -> bool:
+    """Return whether a protocol uses the Vantage port layout."""
+    return protocol != "starfish"
+
+
+def adapter_for(cfg: RunConfig) -> ProtocolAdapter:
+    return {
+        "vantage": Vantage,
+        "autobahn-seamless": AutobahnSeamless,
+        "autobahn-optimistic": AutobahnOptimistic,
+        "simple-it": SimpleIt,
+        "simple-it-bracha": SimpleItBracha,
+        "starfish": Starfish,
+    }[cfg.protocol](cfg)
+
+
+def committee_json(cfg: RunConfig, hosts: list[Host], pubkeys: list[dict]) -> str:
+    return json.dumps(adapter_for(cfg).committee(hosts, pubkeys), indent=2)

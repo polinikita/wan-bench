@@ -1,0 +1,37 @@
+# Example Vantage run with netem.
+
+run_id: v10-example
+region: eu-west-1
+profile: null                 # Null uses the default AWS credential chain.
+instance_type: c5d.2xlarge    # Empty enables automatic type selection.
+min_vcpu: 8                   # Used only with automatic selection.
+min_mem_gib: 16
+min_local_nvme: true
+instance_families: [c, m]
+max_type_candidates: 6
+keep_monitoring_on_down: false
+key_name: my-eu-west-keypair
+ssh_key_path: ~/.ssh/my-eu-west-keypair.pem
+ssh_user: ubuntu
+ssh_open_cidr: null
+
+protocol: vantage
+nodes: 10
+image: ghcr.io/your-org/vantage-node:latest   # Resolved to a digest before launch.
+
+rate: 200                     # Aggregate input rate.
+tx_size: 512
+duration_s: 120
+delta_ms: 200
+protocol_flags: []            # Starfish CLI flags only.
+
+metrics_port: 6003
+
+wan:
+  mode: netem
+  rtt_csv: latency/aws-10region-rtt.csv
+  jitter_ms: 0.0
+  halve_rtt: true
+
+fault:
+  kind: none

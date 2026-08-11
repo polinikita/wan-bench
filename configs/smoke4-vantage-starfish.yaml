@@ -1,0 +1,52 @@
+name: smoke4-vantage-starfish
+output: results/smoke4-vantage-starfish
+rates: [400, 800]
+warmup_s: 10
+window_s: 20
+drop_tolerance_pct: 5
+
+base:
+  region: eu-west-1
+  profile: null
+  az: null
+  instance_type: c5d.xlarge
+  key_name: wanbench-key
+  ssh_key_path: ~/.ssh/wanbench-key.pem
+  ssh_user: ubuntu
+  ssh_open_cidr: null
+  spot: false
+  disk_gb: 50
+  use_instance_store: true
+  keep_monitoring_on_down: false
+  grafana_open_cidr: null
+
+  nodes: 4
+  tx_size: 512
+  tx_mode: random
+  delta_ms: 200
+  spam_initial_delay_ms: 5000
+  spam_delay_per_node_ms: 200
+  spam_lead_ms: 5000
+  prometheus_scrape_interval_s: 30
+
+  wan:
+    mode: netem
+    rtt_csv: latency/aws-10region-rtt.csv
+    jitter_ms: 0.0
+    halve_rtt: true
+    netem_limit_pkts: 100000
+
+  fault:
+    kind: none
+
+variants:
+  - name: vantage
+    protocol: vantage
+    image: ghcr.io/polinikita/vantage-node:latest
+    metrics_port: 6003
+
+  - name: starfish
+    protocol: starfish
+    image: ghcr.io/iotaledger/starfish:latest
+    metrics_port: 1500
+    protocol_flags: [--consensus, starfish]

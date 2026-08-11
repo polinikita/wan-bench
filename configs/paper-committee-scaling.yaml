@@ -1,0 +1,84 @@
+name: paper-committee-scaling
+output: results/paper-committee-scaling
+committee_sizes: [10, 20, 50, 100]
+rates: [100]
+warmup_s: 30
+window_s: 120
+drop_tolerance_pct: 5
+stop_on_drop: true
+min_offered_throughput_pct: 95
+
+base:
+  region: eu-west-1
+  profile: null
+  az: eu-west-1a
+  instance_type: c5d.xlarge
+  key_name: wanbench-key
+  ssh_key_path: ~/.ssh/wanbench-key.pem
+  ssh_user: ubuntu
+  ssh_open_cidr: null
+  spot: false
+  disk_gb: 50
+  use_instance_store: true
+  keep_monitoring_on_down: false
+  grafana_open_cidr: null
+  deadman_minutes: 60
+
+  tx_size: 512
+  tx_mode: random
+  delta_ms: 200
+  max_header_delay_ms: 100
+  spam_initial_delay_ms: 10000
+  spam_delay_per_node_ms: 200
+  spam_lead_ms: 25000
+  prometheus_scrape_interval_s: 5
+
+  wan:
+    mode: netem
+    rtt_csv: latency/aws-10region-rtt.csv
+    jitter_ms: 0.0
+    halve_rtt: true
+    netem_limit_pkts: 100000
+
+  fault:
+    kind: none
+
+variants:
+  - name: vantage
+    protocol: vantage
+    image: ghcr.io/polinikita/vantage-node:latest
+    metrics_port: 6003
+    echo_avail_claims: true
+
+  - name: autobahn-optimistic-a2a
+    protocol: autobahn-optimistic
+    image: ghcr.io/polinikita/vantage-node:latest
+    metrics_port: 6003
+    all_to_all: true
+
+  - name: autobahn-seamless
+    protocol: autobahn-seamless
+    image: ghcr.io/polinikita/vantage-node:latest
+    metrics_port: 6003
+
+  - name: simpleit-optrbc
+    protocol: simple-it
+    image: ghcr.io/polinikita/vantage-node:latest
+    metrics_port: 6003
+
+  - name: simpleit-bracha
+    protocol: simple-it-bracha
+    image: ghcr.io/polinikita/vantage-node:latest
+    metrics_port: 6003
+
+  - name: bluestreak
+    protocol: starfish
+    image: ghcr.io/iotaledger/starfish:latest
+    metrics_port: 1500
+    protocol_flags: [--consensus, bluestreak]
+
+  - name: sailfish-pp
+    protocol: starfish
+    image: ghcr.io/iotaledger/starfish:latest
+    metrics_port: 1500
+    protocol_flags: [--consensus, sailfish-pp]
