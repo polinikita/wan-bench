@@ -29,6 +29,14 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "prometheus_scrape_interval_s"):
             cfg.validate()
 
+    def test_vantage_compact_identifiers_limit_the_committee_to_256(self):
+        cfg = RunConfig(nodes=257, rate=257, image="image", key_name="key")
+        with self.assertRaisesRegex(ValueError, "at most 256"):
+            cfg.validate()
+
+        cfg.vantage_compact_ids = False
+        cfg.validate()
+
     def test_validator_targets_include_archive_labels(self):
         cfg = RunConfig(protocol="vantage", nodes=1, rate=100, image="image")
         hosts = [Host(0, "i-0", "public", "10.0.0.1")]
@@ -215,6 +223,13 @@ class ProtocolTests(unittest.TestCase):
 
         cfg.echo_avail_claims = False
         self.assertFalse(Vantage(cfg).parameters()["echo_avail_claims"])
+
+    def test_vantage_uses_compact_identifiers_by_default(self):
+        cfg = RunConfig(nodes=4, rate=400, image="image")
+        self.assertTrue(Vantage(cfg).parameters()["vantage_compact_ids"])
+
+        cfg.vantage_compact_ids = False
+        self.assertFalse(Vantage(cfg).parameters()["vantage_compact_ids"])
 
     def test_vantage_uses_100ms_header_delay_by_default(self):
         cfg = RunConfig(nodes=4, rate=400, image="image")

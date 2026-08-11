@@ -124,6 +124,7 @@ Run configuration is defined by `RunConfig` in
 - `region: eu-west-1` (Ireland)
 - `wan.mode: netem`
 - `echo_avail_claims: true` for Vantage-family protocols
+- `vantage_compact_ids: true` for Vantage
 - `max_header_delay_ms: 100`
 - `prometheus_scrape_interval_s: 30`
 - `keep_monitoring_on_down: false`

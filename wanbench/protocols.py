@@ -124,6 +124,7 @@ class Vantage(ProtocolAdapter):
             "ack_watermark_period_ms": 50,
             "digest_statements": True,
             "echo_avail_claims": self.cfg.echo_avail_claims,
+            "vantage_compact_ids": self.cfg.vantage_compact_ids,
             "sequence_checkpoints": self.cfg.sequence_checkpoints,
             "sequence_install_enabled": self.cfg.sequence_install_enabled,
             "sequence_checkpoint_interval_views": (

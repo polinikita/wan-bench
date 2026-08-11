@@ -30,6 +30,7 @@ _VARIANT_FIELDS = frozenset({
     "protocol_flags",
     "all_to_all",
     "echo_avail_claims",
+    "vantage_compact_ids",
     "dashboards",
 })
 

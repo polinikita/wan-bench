@@ -49,6 +49,7 @@ variants:
     image: ghcr.io/polinikita/vantage-node:latest
     metrics_port: 6003
     echo_avail_claims: true
+    vantage_compact_ids: true
 
   - name: autobahn-optimistic-a2a
     protocol: autobahn-optimistic

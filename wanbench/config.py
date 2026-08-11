@@ -97,6 +97,8 @@ class RunConfig:
     all_to_all: bool = False
     # Carry availability claims on AGB echoes instead of dedicated messages.
     echo_avail_claims: bool = True
+    # Use one-byte committee identifiers on the Vantage primary wire.
+    vantage_compact_ids: bool = True
     # Vantage sequence checkpoint recovery.
     sequence_checkpoints: bool = True
     sequence_install_enabled: bool = True
@@ -169,6 +171,9 @@ class RunConfig:
             raise ValueError(f"config: unknown protocol {self.protocol!r}")
         if self.nodes < 1:
             raise ValueError("config: nodes must be >= 1")
+        if self.protocol == "vantage" and self.vantage_compact_ids and self.nodes > 256:
+            raise ValueError(
+                "config: Vantage compact identifiers support at most 256 nodes")
         if self.rate < self.nodes or self.rate % self.nodes:
             raise ValueError(
                 "config: rate must be >= nodes and divisible by nodes so every "
