@@ -1,0 +1,96 @@
+{
+  "name": "vantage-compact-ids-local-ab",
+  "date": "2026-08-11",
+  "source_commit": "cfb730e9e5dc64a601d2e2f104d4bcd7aa65e5ae",
+  "configuration": {
+    "protocol": "vantage",
+    "workers_per_validator": 1,
+    "aggregate_rate_tx_s": 100,
+    "transaction_size_bytes": 512,
+    "transaction_mode": "random",
+    "client_interval_s": 60,
+    "drain_ms": 1320,
+    "latency": "default ten-region RTT matrix",
+    "delta_ms": 200,
+    "max_batch_delay_ms": 20,
+    "max_header_delay_ms": 100,
+    "echo_avail_claims": true,
+    "digest_statements": true
+  },
+  "runs": [
+    {
+      "validators": 10,
+      "compact_ids": true,
+      "submitted_transactions": 6000,
+      "sequenced_transactions": 6000,
+      "wire_bytes_sent": 71354238,
+      "wire_bytes_received": 74451139,
+      "wire_messages_sent": 421747,
+      "validator_wire_efficiency": {
+        "min": 2.3080,
+        "median": 2.3212,
+        "max": 2.3439
+      },
+      "ordering_latency_ms": {"p50": 437.5, "p90": 524.5, "p99": 590.5},
+      "materialization_latency_ms": {"p50": 443.5, "p90": 531.5, "p99": 596.5}
+    },
+    {
+      "validators": 10,
+      "compact_ids": false,
+      "submitted_transactions": 6000,
+      "sequenced_transactions": 6000,
+      "wire_bytes_sent": 98336271,
+      "wire_bytes_received": 101432967,
+      "wire_messages_sent": 421545,
+      "validator_wire_efficiency": {
+        "min": 3.1675,
+        "median": 3.2043,
+        "max": 3.2284
+      },
+      "ordering_latency_ms": {"p50": 436.5, "p90": 525.0, "p99": 589.0},
+      "materialization_latency_ms": {"p50": 443.0, "p90": 531.5, "p99": 595.5}
+    },
+    {
+      "validators": 20,
+      "compact_ids": true,
+      "submitted_transactions": 6000,
+      "sequenced_transactions": 6000,
+      "wire_bytes_sent": 222442638,
+      "wire_bytes_received": 225537353,
+      "wire_messages_sent": 1487068,
+      "validator_wire_efficiency": {
+        "min": 3.5863,
+        "median": 3.6221,
+        "max": 3.6639
+      },
+      "ordering_latency_ms": {"p50": 439.0, "p90": 527.5, "p99": 597.0},
+      "materialization_latency_ms": {"p50": 444.5, "p90": 534.0, "p99": 603.5}
+    },
+    {
+      "validators": 20,
+      "compact_ids": false,
+      "submitted_transactions": 6000,
+      "sequenced_transactions": 6000,
+      "wire_bytes_sent": 337077244,
+      "wire_bytes_received": 340166325,
+      "wire_messages_sent": 1487978,
+      "validator_wire_efficiency": {
+        "min": 5.4125,
+        "median": 5.4861,
+        "max": 5.5686
+      },
+      "ordering_latency_ms": {"p50": 438.0, "p90": 527.0, "p99": 595.0},
+      "materialization_latency_ms": {"p50": 444.5, "p90": 533.0, "p99": 601.0}
+    }
+  ],
+  "fit": {
+    "model": "wire_efficiency = intercept + slope * (validators - 1)",
+    "compact": {"intercept": 1.15039, "slope": 0.13009},
+    "legacy_control": {"intercept": 1.15068, "slope": 0.22818},
+    "legacy_validation": [
+      {"validators": 50, "predicted": 12.3315, "aws_measured": 12.4757, "relative_error_pct": -1.156},
+      {"validators": 100, "predicted": 23.7405, "aws_measured": 23.8960, "relative_error_pct": -0.651}
+    ]
+  }
+}
+

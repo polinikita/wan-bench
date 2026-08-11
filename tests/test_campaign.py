@@ -160,6 +160,41 @@ class CampaignConfigTests(unittest.TestCase):
         self.assertEqual(report["committee_sizes"], [4, 8])
         self.assertEqual(report["instances"], 9)
 
+
+class PaperThroughputCampaignTests(unittest.TestCase):
+    def test_n100_manifest_is_pinned_and_complete(self):
+        path = Path(__file__).parents[1] / "configs" / "paper-n100-throughput.yaml"
+        campaign = CampaignConfig.load(str(path))
+        configs = campaign.configs()
+
+        self.assertEqual(campaign.committee_sizes, [100])
+        self.assertEqual(
+            campaign.rates,
+            [100, 10_000, 150_000, 200_000, 225_000, 250_000, 275_000],
+        )
+        self.assertEqual(campaign.strict_through_rate, 10_000)
+        self.assertEqual(campaign.min_offered_throughput_pct, 95)
+        self.assertEqual(
+            [name for name, _ in configs],
+            [
+                "vantage",
+                "autobahn-optimistic-a2a",
+                "autobahn-seamless",
+                "simpleit-optrbc",
+                "simpleit-bracha",
+                "bluestreak",
+                "sailfish-pp",
+            ],
+        )
+        for _name, cfg in configs:
+            self.assertEqual(cfg.instance_type, "c5d.2xlarge")
+            self.assertEqual((cfg.region, cfg.az), ("eu-west-1", "eu-west-1a"))
+            self.assertEqual(cfg.wan.mode, "netem")
+            self.assertTrue(cfg.use_instance_store)
+            self.assertIn("@sha256:", cfg.image)
+        self.assertTrue(configs[0][1].vantage_compact_ids)
+
+
 class CampaignExecutionTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

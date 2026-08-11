@@ -187,6 +187,22 @@ python3 -m wanbench.record \
 The record stores summaries and raw-archive checksums, not Prometheus databases.
 The committee-scaling record used by the Vantage paper is in
 [`recorded/paper-committee-scaling-20260811`](recorded/paper-committee-scaling-20260811).
+The compact-identifier A/B record is in
+[`recorded/vantage-compact-ids-local-ab-20260811`](recorded/vantage-compact-ids-local-ab-20260811).
+
+The prepared `n=100` paper throughput campaign is
+[`configs/paper-n100-throughput.yaml`](configs/paper-n100-throughput.yaml). It
+uses seven variants on one `c5d.2xlarge` fleet in Ireland, private addresses,
+netem, and the ten-region RTT matrix. Plan or execute it with one command:
+
+```bash
+wanbench campaign --config configs/paper-n100-throughput.yaml
+wanbench campaign --config configs/paper-n100-throughput.yaml --execute
+```
+
+The 100 and 10,000 tx/s points are strict. Higher loads are exploratory, and a
+variant stops when committed throughput falls below 95% of offered load or
+drops by more than 5% from the previous point.
 
 ## Tests
 

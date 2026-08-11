@@ -1,0 +1,5 @@
+validators,status,legacy_aws_wire_b_per_b,compact_wire_b_per_b,reduction_pct,compact_wire_mb_per_s_at_100_tps,compact_nonpayload_b_per_tx
+10,local-measured,3.1952,2.3212,27.35,0.1188,727.7
+20,local-measured,5.4170,3.6221,33.13,0.1855,1368.1
+50,projected,12.4757,7.5248,39.68,0.3853,3350.9
+100,projected,23.8960,14.0293,41.29,0.7183,6676.1
