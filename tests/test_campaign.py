@@ -262,17 +262,37 @@ class CampaignExecutionTests(unittest.TestCase):
         self.assertEqual(state["status"], "completed")
         self.assertTrue(all(v["status"] == "completed" for v in state["variants"]))
 
-    def test_failure_is_checkpointed_and_fleet_is_torn_down(self):
-        patches = self.patches(RuntimeError("failed point"))
+    def test_variant_failure_is_checkpointed_and_campaign_continues(self):
+        patches = self.patches([RuntimeError("failed point"), None])
         out = Path(self.tmp.name) / "out"
-        with patches[0], patches[1] as down, patches[2], patches[3], patches[4], \
+        with patches[0], patches[1] as down, patches[2], patches[3], \
+             patches[4] as sweep, \
              patches[5], patches[6], patches[7], patches[8], patches[9]:
-            with self.assertRaisesRegex(RuntimeError, "failed point"):
-                campaign_mod.execute(self.campaign, self.configs, str(out))
+            campaign_mod.execute(self.campaign, self.configs, str(out))
         state = json.loads((out / "campaign.json").read_text())
-        self.assertEqual(state["status"], "failed")
+        self.assertEqual(state["status"], "completed_with_failures")
         self.assertEqual(state["variants"][0]["status"], "failed")
+        self.assertEqual(state["variants"][1]["status"], "completed")
+        self.assertEqual(sweep.call_count, 2)
         down.assert_called_once()
+
+    def test_resume_preserves_failed_variants_and_runs_pending_variants(self):
+        out = Path(self.tmp.name) / "out"
+        out.mkdir()
+        state = campaign_mod._new_state(self.campaign, self.configs)
+        state["variants"][0]["status"] = "failed"
+        state["variants"][0]["error"] = "RuntimeError: exhausted"
+        campaign_mod._checkpoint(out / "campaign.json", state)
+        patches = self.patches()
+        with patches[0], patches[1], patches[2], patches[3], \
+             patches[4] as sweep, patches[5], patches[6], patches[7], \
+             patches[8], patches[9]:
+            resumed = campaign_mod.execute(
+                self.campaign, self.configs, str(out), resume=True)
+        self.assertEqual(sweep.call_count, 1)
+        self.assertEqual(resumed["variants"][0]["status"], "failed")
+        self.assertEqual(resumed["variants"][1]["status"], "completed")
+        self.assertEqual(resumed["status"], "completed_with_failures")
 
     def test_node_cleanup_failure_does_not_mask_successful_teardown(self):
         patches = self.patches()

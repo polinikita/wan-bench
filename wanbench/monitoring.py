@@ -346,10 +346,12 @@ def _archive_compose_yml() -> str:
       - -ec
       - >-
         find /data -mindepth 1 -maxdepth 1 -exec rm -rf {} +;
-        tar -xzf /bundle/prometheus-tsdb.tar.gz --strip-components=1 -C /data;
+        for archive in /bundle/prometheus-tsdb*.tar.gz; do
+          tar -xzf "$archive" --strip-components=1 -C /data;
+        done;
         chmod -R a+rwX /data
     volumes:
-      - ../prometheus-tsdb.tar.gz:/bundle/prometheus-tsdb.tar.gz:ro
+      - ..:/bundle:ro
       - prometheus-data:/data
   prometheus:
     image: prom/prometheus
@@ -469,8 +471,11 @@ def start(aws: Aws, ssh: Ssh, cfg: RunConfig, control: Host, nodes: list[Host],
 
 
 def archive_prometheus(ssh: Ssh, control: Host,
-                       outdir: str | pathlib.Path) -> pathlib.Path:
+                       outdir: str | pathlib.Path,
+                       filename: str = "prometheus-tsdb.tar.gz") -> pathlib.Path:
     """Snapshot the live Prometheus database and copy it locally."""
+    if not re.fullmatch(r"prometheus-tsdb(?:-part[1-9][0-9]*)?\.tar\.gz", filename):
+        raise ValueError(f"invalid Prometheus archive filename: {filename!r}")
     response = ssh.run(
         control,
         f"curl -fsS -XPOST http://127.0.0.1:{PROM_PORT}/api/v1/admin/tsdb/snapshot",
@@ -490,7 +495,7 @@ def archive_prometheus(ssh: Ssh, control: Host,
     )
     out = pathlib.Path(outdir)
     out.mkdir(parents=True, exist_ok=True)
-    target = out / "prometheus-tsdb.tar.gz"
+    target = out / filename
     partial = target.with_suffix(target.suffix + ".tmp")
     ssh.fetch(control, remote, str(partial), timeout=600)
     partial.replace(target)

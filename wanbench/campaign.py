@@ -370,6 +370,7 @@ def _new_state(campaign: CampaignConfig,
         "definition": _definition(campaign, configs),
         "fleet": None,
         "monitoring_archive": None,
+        "monitoring_archives": [],
         "monitoring_archive_error": None,
         "monitoring_bundle": None,
         "monitoring_bundle_error": None,
@@ -415,9 +416,12 @@ def _load_state(path: pathlib.Path, campaign: CampaignConfig,
             "campaign definition changed; resume with the original settings and "
             "image digests")
     for variant in state["variants"]:
-        if variant["status"] != "completed":
+        if variant["status"] == "running":
             variant["status"] = "pending"
             variant["error"] = None
+    if "monitoring_archives" not in state:
+        archive = state.get("monitoring_archive")
+        state["monitoring_archives"] = [archive] if archive else []
     state["status"] = "running"
     state["error"] = None
     state["finished_at"] = None
@@ -463,13 +467,17 @@ def execute(campaign: CampaignConfig, configs: list[tuple[str, RunConfig]],
     pending = [
         (name, cfg, entry)
         for (name, cfg), entry in zip(configs, state["variants"])
-        if entry["status"] != "completed"
+        if entry["status"] == "pending"
     ]
     if not pending:
-        state["status"] = "completed"
+        state["status"] = (
+            "completed_with_failures"
+            if any(entry["status"] == "failed" for entry in state["variants"])
+            else "completed"
+        )
         state["finished_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         _checkpoint(state_path, state)
-        print(f"campaign: all variants already completed -> {state_path}")
+        print(f"campaign: no pending variants -> {state_path}")
         return state
 
     fleet_cfg = copy.deepcopy(pending[0][1])
@@ -534,10 +542,12 @@ def execute(campaign: CampaignConfig, configs: list[tuple[str, RunConfig]],
                     metric_labels=metric_labels,
                     fleet=fleet,
                 )
-            except BaseException as exc:
+            except Exception as exc:  # A protocol failure must not cancel its peers.
                 entry["status"] = "failed"
                 entry["error"] = f"{type(exc).__name__}: {exc}"
-                raise
+                _checkpoint(state_path, state)
+                print(f"campaign: variant {name} failed ({entry['error']}); "
+                      "continuing", flush=True)
             else:
                 entry["status"] = "completed"
                 entry["error"] = None
@@ -553,8 +563,15 @@ def execute(campaign: CampaignConfig, configs: list[tuple[str, RunConfig]],
             teardown_start = time.monotonic()
             try:
                 try:
-                    archive = monitoring.archive_prometheus(ssh, _control, out)
-                    state["monitoring_archive"] = archive.name
+                    archives = state.setdefault("monitoring_archives", [])
+                    archive_name = (
+                        "prometheus-tsdb.tar.gz" if not archives
+                        else f"prometheus-tsdb-part{len(archives) + 1}.tar.gz"
+                    )
+                    archive = monitoring.archive_prometheus(
+                        ssh, _control, out, filename=archive_name)
+                    archives.append(archive.name)
+                    state["monitoring_archive"] = archives[0]
                 except Exception as exc:  # noqa: BLE001 -- teardown must still run
                     state["monitoring_archive_error"] = f"{type(exc).__name__}: {exc}"
                     print(f"campaign: WARNING Prometheus archive failed ({exc})", flush=True)
@@ -579,7 +596,11 @@ def execute(campaign: CampaignConfig, configs: list[tuple[str, RunConfig]],
             finally:
                 state["teardown_s"] = round(time.monotonic() - teardown_start)
                 _checkpoint(state_path, state)
-    state["status"] = "completed"
+    state["status"] = (
+        "completed_with_failures"
+        if any(entry["status"] == "failed" for entry in state["variants"])
+        else "completed"
+    )
     state["finished_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     try:
         bundle = monitoring.write_archive_bundle(

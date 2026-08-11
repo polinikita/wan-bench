@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from wanbench.record import record, record_matrix
+from wanbench.record import record, record_campaign, record_matrix
 
 
 class RecordTests(unittest.TestCase):
@@ -102,6 +102,64 @@ class RecordTests(unittest.TestCase):
                 "kind": "committee-matrix", "status": "running"}))
             with self.assertRaisesRegex(ValueError, "not completed"):
                 record_matrix(str(matrix), dest=str(Path(tmp) / "recorded"))
+
+    def test_finished_campaign_with_failed_variant_is_recorded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source"
+            sweep_dir = source / "vantage"
+            sweep_dir.mkdir(parents=True)
+            campaign = {
+                "name": "paper-throughput",
+                "status": "completed_with_failures",
+                "started_at": "2026-08-11T10:00:00+00:00",
+                "finished_at": "2026-08-11T11:00:00+00:00",
+                "variants": [
+                    {"name": "vantage", "status": "completed",
+                     "error": None, "output": "vantage"},
+                    {"name": "baseline", "status": "failed",
+                     "error": "barrier failed", "output": "baseline"},
+                ],
+            }
+            campaign_path = source / "campaign.json"
+            campaign_path.write_text(json.dumps(campaign))
+            (sweep_dir / "sweep.json").write_text(json.dumps({
+                "protocol": "vantage",
+                "status": "completed",
+                "stopped_early": True,
+                "stop_reason": "committed throughput too low; overloaded",
+                "points": [
+                    {"nodes": 4, "rate": 100, "tps_median": 100,
+                     "healthy_nodes_final": 4},
+                    {"nodes": 4, "rate": 200, "tps_median": 150,
+                     "healthy_nodes_final": 4},
+                ],
+            }))
+            (source / "prometheus-tsdb.tar.gz").write_bytes(b"raw")
+            config = root / "config.yaml"
+            config.write_text("name: paper-throughput\n")
+
+            out = record_campaign(
+                str(campaign_path), str(config), str(root / "recorded"),
+                "20260811")
+            measurements = json.loads((out / "measurements.json").read_text())
+            points = json.loads((out / "points.json").read_text())
+
+            self.assertEqual(out.name, "paper-throughput-20260811")
+            self.assertEqual(len(measurements["variants"]), 2)
+            self.assertEqual(measurements["raw_prometheus_archives"][0]["bytes"], 3)
+            self.assertFalse(points[0]["overloaded"])
+            self.assertTrue(points[1]["overloaded"])
+            self.assertIn("barrier failed", (out / "README.md").read_text())
+            self.assertTrue((out / "SHA256SUMS").is_file())
+
+    def test_running_campaign_is_not_recorded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            campaign = Path(tmp) / "campaign.json"
+            campaign.write_text(json.dumps({"status": "running"}))
+            with self.assertRaisesRegex(ValueError, "not finished"):
+                record_campaign(
+                    str(campaign), dest=str(Path(tmp) / "recorded"))
 
 
 if __name__ == "__main__":

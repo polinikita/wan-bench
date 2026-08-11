@@ -185,6 +185,16 @@ python3 -m wanbench.record \
 ```
 
 The record stores summaries and raw-archive checksums, not Prometheus databases.
+
+Promote a finished single-committee campaign, including partial protocol
+failures, with:
+
+```bash
+python3 -m wanbench.record \
+  --campaign results/example/campaign.json --config configs/example.yaml \
+  --stamp 20260811
+```
+
 The committee-scaling record used by the Vantage paper is in
 [`recorded/paper-committee-scaling-20260811`](recorded/paper-committee-scaling-20260811).
 The compact-identifier A/B record is in
@@ -203,6 +213,9 @@ wanbench campaign --config configs/paper-n100-throughput.yaml --execute
 The 100 and 10,000 tx/s points are strict. Higher loads are exploratory, and a
 variant stops when committed throughput falls below 95% of offered load or
 drops by more than 5% from the previous point.
+
+The measured paper record is in
+[`recorded/paper-n100-throughput-20260811`](recorded/paper-n100-throughput-20260811).
 
 ## Tests
 

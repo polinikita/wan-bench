@@ -594,7 +594,7 @@ class Aws:
         }
 
     def terminate(self, keep_control: bool = False) -> list[str]:
-        """Terminate this run's instances, optionally retaining the control host."""
+        """Force-terminate this run's disposable benchmark instances."""
         live = self._describe_instances(("pending", "running", "stopping", "stopped"))
         spare = None
         if keep_control:
@@ -604,8 +604,15 @@ class Aws:
                 spare = control[0]["InstanceId"]
         ids = [i["InstanceId"] for i in live if i["InstanceId"] != spare]
         if ids:
-            self.ec2.terminate_instances(InstanceIds=ids)
+            self._terminate_instances(ids)
         return ids
+
+    def _terminate_instances(self, ids: list[str]) -> None:
+        self.ec2.terminate_instances(
+            InstanceIds=ids,
+            Force=True,
+            SkipOsShutdown=True,
+        )
 
     def _wait_terminated(self, role: str | None = "validator") -> None:
         """Poll and retry termination for this run and optional role."""
@@ -620,8 +627,7 @@ class Aws:
                 raise RuntimeError(
                     f"timed out waiting for {len(left)} instance(s) to terminate: "
                     f"{[i['InstanceId'] for i in left]}")
-            self.ec2.terminate_instances(
-                InstanceIds=[i["InstanceId"] for i in left])
+            self._terminate_instances([i["InstanceId"] for i in left])
             time.sleep(10)
 
     @staticmethod
@@ -637,7 +643,11 @@ class Aws:
         ids = [i["InstanceId"] for reservation in resp["Reservations"]
                for i in reservation["Instances"]]
         if ids:
-            ec2.terminate_instances(InstanceIds=ids)
+            ec2.terminate_instances(
+                InstanceIds=ids,
+                Force=True,
+                SkipOsShutdown=True,
+            )
             deadline = time.monotonic() + 600
             while True:
                 live = ec2.describe_instances(Filters=filters)

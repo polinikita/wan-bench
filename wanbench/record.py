@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime
 import hashlib
+import io
 import json
 import pathlib
 import shutil
@@ -137,6 +139,167 @@ def _sha256(path: pathlib.Path) -> str:
     return digest.hexdigest()
 
 
+def _write_checksums(out: pathlib.Path) -> None:
+    tracked = sorted(path for path in out.iterdir()
+                     if path.is_file() and path.name != "SHA256SUMS")
+    checksums = [f"{_sha256(path)}  {path.name}" for path in tracked]
+    (out / "SHA256SUMS").write_text("\n".join(checksums) + "\n")
+
+
+def _new_record_dir(dest: str, name: str) -> pathlib.Path:
+    out = pathlib.Path(dest) / name
+    if out.exists() and any(out.iterdir()):
+        raise FileExistsError(f"record already exists and is not empty: {out}")
+    out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def _campaign_rows(campaign: dict, source: pathlib.Path) -> tuple[list[dict], list[dict]]:
+    rows: list[dict] = []
+    variants: list[dict] = []
+    for entry in campaign.get("variants", []):
+        sweep_path = source / entry["output"] / "sweep.json"
+        sweep = json.loads(sweep_path.read_text()) if sweep_path.is_file() else None
+        variants.append({
+            "name": entry["name"],
+            "status": entry.get("status"),
+            "error": entry.get("error"),
+            "sweep": sweep,
+        })
+        if not sweep:
+            continue
+        points = sweep.get("points", [])
+        overloaded_rate = None
+        if (sweep.get("stopped_early") and
+                "overloaded" in (sweep.get("stop_reason") or "") and points):
+            overloaded_rate = points[-1].get("rate")
+        for point in points:
+            row = {
+                "variant": entry["name"],
+                "protocol": sweep.get("protocol"),
+                "variant_status": entry.get("status"),
+                "overloaded": point.get("rate") == overloaded_rate,
+            }
+            row.update(point)
+            rows.append(row)
+    return rows, variants
+
+
+def _write_campaign_points(out: pathlib.Path, rows: list[dict]) -> None:
+    columns = [
+        "variant", "protocol", "variant_status", "overloaded", "rate",
+        "tps_median", "tps_min", "material_p50_ms_since_start",
+        "material_p90_ms_since_start", "material_p99_ms_since_start",
+        "cpu_cores_p50", "rss_mb_median", "wire_mb_per_s_p50",
+        "bandwidth_efficiency_p50", "healthy_nodes_baseline",
+        "healthy_nodes_final", "netem_dropped_packets", "panics_total",
+    ]
+    table = io.StringIO()
+    writer = csv.DictWriter(table, fieldnames=columns, extrasaction="ignore",
+                            lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(rows)
+    (out / "points.csv").write_text(table.getvalue())
+    (out / "points.json").write_text(
+        json.dumps(rows, indent=2, allow_nan=False) + "\n")
+
+
+def _campaign_readme(campaign: dict, rows: list[dict]) -> str:
+    lines = [
+        f"# {campaign.get('name', 'campaign')}",
+        "",
+        f"Status: {campaign.get('status', 'unknown')}. "
+        f"Started {campaign.get('started_at', 'unknown')}; "
+        f"finished {campaign.get('finished_at', 'unknown')}.",
+        "",
+        "| variant | offered tx/s | committed tx/s | p50 ms | p99 ms | "
+        "CPU cores/node | RSS MB/node | wire MB/s/node | healthy | outcome |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    nodes = next((row.get("nodes") for row in rows if row.get("nodes")), "?")
+    for row in rows:
+        outcome = "overloaded" if row["overloaded"] else "accepted"
+        lines.append(
+            f"| {row['variant']} | {_fmt(row.get('rate'), ',d')} | "
+            f"{_fmt(row.get('tps_median'), ',.1f')} | "
+            f"{_fmt(row.get('material_p50_ms_since_start'), '.1f')} | "
+            f"{_fmt(row.get('material_p99_ms_since_start'), '.1f')} | "
+            f"{_fmt(row.get('cpu_cores_p50'), '.3f')} | "
+            f"{_fmt(row.get('rss_mb_median'), '.1f')} | "
+            f"{_fmt(row.get('wire_mb_per_s_p50'), '.2f')} | "
+            f"{row.get('healthy_nodes_final', '--')}/{nodes} | {outcome} |"
+        )
+    lines += ["", "## Variant failures", ""]
+    failed = [entry for entry in campaign.get("variants", [])
+              if entry.get("status") == "failed"]
+    if failed:
+        lines.extend(f"- `{entry['name']}`: {entry.get('error', 'unknown error')}"
+                     for entry in failed)
+    else:
+        lines.append("None.")
+    lines += [
+        "",
+        "## Record",
+        "",
+        "This directory contains the measured point summaries, exact campaign "
+        "definition, pinned image digests, fleet provenance, and per-variant "
+        "sweep records.",
+        "",
+        "- `points.csv`: plot-ready table",
+        "- `points.json`: complete point records",
+        "- `measurements.json`: campaign, per-variant sweeps, and raw archive checksums",
+        "- `campaign.json`: execution status and effective configurations",
+        "- `config.yaml`: source campaign",
+        "",
+        "Raw Prometheus databases are not stored in Git. Their paths, sizes, "
+        "and SHA-256 digests are recorded in `measurements.json`.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def record_campaign(campaign_path: str, config_path: str | None = None,
+                    dest: str = "recorded",
+                    stamp: str | None = None) -> pathlib.Path:
+    """Promote a finished single-committee campaign to a paper record."""
+    campaign_file = pathlib.Path(campaign_path)
+    source = campaign_file.parent
+    campaign = json.loads(campaign_file.read_text())
+    if campaign.get("status") not in {"completed", "completed_with_failures"}:
+        raise ValueError(
+            f"campaign is {campaign.get('status', 'unknown')}, not finished")
+
+    name = campaign.get("name") or source.name
+    name = f"{name}-{stamp}" if stamp else name
+    out = _new_record_dir(dest, name)
+    rows, variants = _campaign_rows(campaign, source)
+
+    archives = []
+    for archive in sorted(source.glob("prometheus-tsdb*.tar.gz")):
+        archives.append({
+            "source": archive.name,
+            "bytes": archive.stat().st_size,
+            "sha256": _sha256(archive),
+        })
+    measurements = {
+        "schema_version": 1,
+        "kind": "campaign-record",
+        "recorded_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "campaign": campaign,
+        "variants": variants,
+        "raw_prometheus_archives": archives,
+    }
+    (out / "measurements.json").write_text(
+        json.dumps(measurements, indent=2, allow_nan=False) + "\n")
+    shutil.copy2(campaign_file, out / "campaign.json")
+    if config_path:
+        shutil.copy2(config_path, out / "config.yaml")
+    _write_campaign_points(out, rows)
+    (out / "README.md").write_text(_campaign_readme(campaign, rows))
+    _write_checksums(out)
+    return out
+
+
 def record_matrix(matrix_path: str, config_path: str | None = None,
                   dest: str = "recorded",
                   stamp: str | None = None) -> pathlib.Path:
@@ -224,10 +387,7 @@ def record_matrix(matrix_path: str, config_path: str | None = None,
     ]
     (out / "README.md").write_text("\n".join(lines))
 
-    tracked = sorted(path for path in out.iterdir()
-                     if path.is_file() and path.name != "SHA256SUMS")
-    checksums = [f"{_sha256(path)}  {path.name}" for path in tracked]
-    (out / "SHA256SUMS").write_text("\n".join(checksums) + "\n")
+    _write_checksums(out)
     return out
 
 
@@ -236,12 +396,17 @@ def main(argv=None) -> int:
     source = p.add_mutually_exclusive_group(required=True)
     source.add_argument("--sweep", help="path to a sweep.json")
     source.add_argument("--matrix", help="path to a completed matrix.json")
+    source.add_argument("--campaign", help="path to a finished campaign.json")
     p.add_argument("--config", help="source config for older sweep files")
     p.add_argument("--dest", default="recorded", help="tracked output root")
     p.add_argument("--stamp", default=None, help="suffix, e.g. 20260806")
     a = p.parse_args(argv)
-    out = (record_matrix(a.matrix, a.config, a.dest, a.stamp)
-           if a.matrix else record(a.sweep, a.config, a.dest, a.stamp))
+    if a.matrix:
+        out = record_matrix(a.matrix, a.config, a.dest, a.stamp)
+    elif a.campaign:
+        out = record_campaign(a.campaign, a.config, a.dest, a.stamp)
+    else:
+        out = record(a.sweep, a.config, a.dest, a.stamp)
     print(f"recorded -> {out}")
     for f in sorted(out.iterdir()):
         print(f"  {f.name}")

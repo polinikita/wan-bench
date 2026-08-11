@@ -7,6 +7,23 @@ from wanbench.ssh import Host
 import wanbench.run as run_mod
 
 class LifecycleTests(unittest.TestCase):
+    def test_terminate_skips_guest_shutdown(self):
+        cfg = RunConfig(nodes=1, rate=100, image="image")
+        aws = Aws.__new__(Aws)
+        aws.cfg = cfg
+        aws.ec2 = MagicMock()
+        aws._describe_instances = MagicMock(return_value=[
+            {"InstanceId": "i-node"},
+            {"InstanceId": "i-control"},
+        ])
+
+        self.assertEqual(aws.terminate(), ["i-node", "i-control"])
+        aws.ec2.terminate_instances.assert_called_once_with(
+            InstanceIds=["i-node", "i-control"],
+            Force=True,
+            SkipOsShutdown=True,
+        )
+
     def test_up_failure_terminates_every_instance(self):
         cfg = RunConfig(nodes=1, rate=100, image="image")
         node = Host(0, "i-node", "public-node", "10.0.0.1")
