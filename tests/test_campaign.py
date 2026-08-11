@@ -195,6 +195,37 @@ class PaperThroughputCampaignTests(unittest.TestCase):
         self.assertTrue(configs[0][1].vantage_compact_ids)
 
 
+class StarfishM5dGcCampaignTests(unittest.TestCase):
+    def test_manifest_is_strict_and_uses_the_gc_image(self):
+        path = (Path(__file__).parents[1] / "configs" /
+                "paper-n100-starfish-m5d-gc.yaml")
+        campaign = CampaignConfig.load(str(path))
+        configs = campaign.configs()
+
+        self.assertEqual(campaign.committee_sizes, [100])
+        self.assertEqual(
+            campaign.rates,
+            [200_000, 225_000, 250_000, 275_000],
+        )
+        self.assertIsNone(campaign.strict_through_rate)
+        self.assertEqual(campaign.min_offered_throughput_pct, 95)
+        self.assertTrue(campaign.stop_on_drop)
+        self.assertEqual(
+            [name for name, _ in configs],
+            ["bluestreak", "sailfish-pp"],
+        )
+        for _name, cfg in configs:
+            self.assertEqual(cfg.instance_type, "m5d.2xlarge")
+            self.assertEqual((cfg.region, cfg.az), ("eu-west-1", "eu-west-1a"))
+            self.assertEqual(cfg.wan.mode, "netem")
+            self.assertTrue(cfg.use_instance_store)
+            self.assertEqual(
+                cfg.image,
+                "ghcr.io/iotaledger/starfish-node@sha256:"
+                "3f7ee52dff606214e1dd979c31783f4bb4391405c2317c4b41b0728a89d04d88",
+            )
+
+
 class CampaignExecutionTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

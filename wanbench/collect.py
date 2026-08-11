@@ -500,6 +500,7 @@ def collect(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
         # Protocol health fields are empty or zero when unsupported.
         **_straggler_fields(cfg, fin, base, indices, delta),
         **_worker_health_fields(cfg, fin, base, indices, window),
+        **_starfish_memory_fields(cfg, fin, indices),
     }
     encoded = json.dumps(summary, indent=2, allow_nan=False)
     (out / "summary.json").write_text(encoded)
@@ -553,6 +554,25 @@ def _bandwidth_fields(cfg: RunConfig, committed: list[float],
             statistics.median(non_payload_per_tx), 1),
         "estimated_non_payload_efficiency_p50": round(
             statistics.median(non_payload_efficiency), 4),
+    }
+
+
+def _starfish_memory_fields(cfg: RunConfig, fin: dict[int, str],
+                            indices: list[int]) -> dict:
+    if cfg.protocol != "starfish":
+        return {}
+
+    blocks = [_family_sum(fin[i], "dag_blocks_in_memory") for i in indices]
+    serialized_mb = [
+        _family_sum(fin[i], "global_in_memory_blocks_bytes") / 1e6
+        for i in indices
+    ]
+    unloaded = [_family_sum(fin[i], "dag_state_unloaded_blocks") for i in indices]
+    return {
+        "dag_blocks_in_memory_p50": round(statistics.median(blocks), 1),
+        "dag_serialized_mb_in_memory_p50": round(statistics.median(serialized_mb), 1),
+        "dag_serialized_mb_in_memory_max": round(max(serialized_mb), 1),
+        "dag_state_unloaded_blocks_p50": round(statistics.median(unloaded), 1),
     }
 
 

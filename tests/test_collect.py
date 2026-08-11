@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from wanbench.collect import (_bandwidth_fields, _metrics_ports, _scrape_one,
+                             _starfish_memory_fields,
                              _successful_ports, _split_by_port, _wait_for_window_s,
                              _worker_health_fields, check_progress_quality,
                              collect, scrape_all)
@@ -421,6 +422,33 @@ class WorkerHealthFieldTests(unittest.TestCase):
             self.assertEqual(got["worker_queue_peak_max_by_stage"],
                              {"synchronizer": 7.0, "store": 0.0},
                              f"{protocol} shares the worker and must be instrumented")
+
+
+class StarfishMemoryFieldTests(unittest.TestCase):
+    def test_reduces_committee_memory_metrics(self):
+        cfg = RunConfig(nodes=2, rate=200, image="image", protocol="starfish")
+        fin = {
+            0: ("dag_blocks_in_memory 100\n"
+                "global_in_memory_blocks_bytes 2000000\n"
+                "dag_state_unloaded_blocks 40\n"),
+            1: ("dag_blocks_in_memory 102\n"
+                "global_in_memory_blocks_bytes 4000000\n"
+                "dag_state_unloaded_blocks 60\n"),
+        }
+
+        self.assertEqual(
+            _starfish_memory_fields(cfg, fin, [0, 1]),
+            {
+                "dag_blocks_in_memory_p50": 101.0,
+                "dag_serialized_mb_in_memory_p50": 3.0,
+                "dag_serialized_mb_in_memory_max": 4.0,
+                "dag_state_unloaded_blocks_p50": 50.0,
+            },
+        )
+
+    def test_is_absent_for_other_protocols(self):
+        cfg = RunConfig(nodes=1, rate=100, image="image", protocol="vantage")
+        self.assertEqual(_starfish_memory_fields(cfg, {0: ""}, [0]), {})
 
 class MetricsWindowTimingTests(unittest.TestCase):
     """Tests for client activation and metrics-window timing."""

@@ -1,0 +1,6 @@
+variant,protocol,variant_status,overloaded,rate,tps_median,tps_min,material_p50_ms_since_start,material_p90_ms_since_start,material_p99_ms_since_start,cpu_cores_p50,rss_mb_median,wire_mb_per_s_p50,bandwidth_efficiency_p50,healthy_nodes_baseline,healthy_nodes_final,netem_dropped_packets,panics_total
+bluestreak,starfish,completed,False,200000,197720.7,196339.1,522.5,639.7,870.5,2.279,1778.8,103.53,1.0217,100,100,0,
+bluestreak,starfish,completed,False,225000,222219.7,220844.0,529.5,647.7,942.8,2.564,2621.0,116.32,1.0218,100,100,0,
+bluestreak,starfish,completed,False,250000,239605.4,235512.7,540.8,684.6,1478.8,2.8,4255.1,127.94,1.0428,100,100,0,
+bluestreak,starfish,completed,True,275000,242023.2,232264.2,5661.7,14948.2,18985.1,2.433,5428.4,131.23,1.062,100,100,0,
+sailfish-pp,starfish,completed,True,200000,109950.0,106005.8,1079.7,32474.2,54454.0,2.225,3599.8,65.39,1.1603,100,100,0,

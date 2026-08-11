@@ -217,6 +217,9 @@ drops by more than 5% from the previous point.
 The measured paper record is in
 [`recorded/paper-n100-throughput-20260811`](recorded/paper-n100-throughput-20260811).
 
+The Starfish payload-compaction validation is in
+[`recorded/paper-n100-starfish-m5d-gc-20260811`](recorded/paper-n100-starfish-m5d-gc-20260811).
+
 ## Tests
 
 Run the offline regression suite:
