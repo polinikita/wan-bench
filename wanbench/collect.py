@@ -393,6 +393,21 @@ def collect(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
     if strict and any(value < 0 for value in committed):
         raise RuntimeError(
             f"committed counter reset during measurement: {committed}")
+    # A crashed process loses its counters and a restarted one recounts from
+    # zero over a partial window, so two-point deltas for the crash cohort are
+    # meaningless (positive but short, or negative). Exclude the configured
+    # crash nodes, plus any node whose counter visibly reset, from every
+    # reduction below. timeseries.json carries their recovery curves.
+    fault_dead = set(cfg.fault.nodes) if cfg.fault.kind == "crash" else set()
+    reset_set = fault_dead | {i for i, v in zip(indices, committed) if v < 0}
+    reset_nodes = sorted(reset_set)
+    live = [i for i in indices if i not in reset_set]
+    committed = [c for i, c in zip(indices, committed) if i not in reset_set]
+    committed_bytes = [c for i, c in zip(indices, committed_bytes)
+                       if i not in reset_set]
+    if reset_nodes:
+        print(f"collect: node(s) {reset_nodes} crashed or reset mid-run; "
+              f"medians use the {len(live)} remaining node(s)", flush=True)
     # Strict sweeps require every node to commit during the window.
     if strict:
         stalled = [i for i, value in zip(indices, committed) if value == 0]
@@ -405,34 +420,34 @@ def collect(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
         w = node_window[i]
         return value / w if w else 0.0
 
-    node_tps = [per_node_rate(i, c) for i, c in zip(indices, committed)]
+    node_tps = [per_node_rate(i, c) for i, c in zip(live, committed)]
     tps = statistics.median(node_tps) if node_tps else 0.0
     if strict and node_tps:
         floor = tps * STRICT_MIN_NODE_RATE_PCT_OF_MEDIAN / 100.0
-        slow = [(i, round(rate, 1)) for i, rate in zip(indices, node_tps) if rate < floor]
+        slow = [(i, round(rate, 1)) for i, rate in zip(live, node_tps) if rate < floor]
         if slow:
             raise RuntimeError(
                 f"node commit rates below {STRICT_MIN_NODE_RATE_PCT_OF_MEDIAN:.0f}% "
                 f"of committee median {tps:.1f} tx/s: {slow}")
 
     def lat(snapshot: dict[int, str], fam: str, v: str) -> float:
-        vals = [x for i in indices if (x := _gauge_v(snapshot[i], fam, v)) is not None]
+        vals = [x for i in live if (x := _gauge_v(snapshot[i], fam, v)) is not None]
         return statistics.median(vals) if vals else float("nan")
 
-    cpu = [per_node_rate(i, delta(i, m["cpu"])) * 100 for i in indices]
-    rss = [_family_sum(fin[i], m["rss"]) / 1e6 for i in indices]
+    cpu = [per_node_rate(i, delta(i, m["cpu"])) * 100 for i in live]
+    rss = [_family_sum(fin[i], m["rss"]) / 1e6 for i in live]
     # Sum per-node wire rates after applying per-node windows.
-    sent_bytes = [delta(i, m["bytes_sent"]) for i in indices]
+    sent_bytes = [delta(i, m["bytes_sent"]) for i in live]
     node_bytes_rate = [per_node_rate(i, value)
-                       for i, value in zip(indices, sent_bytes)]
+                       for i, value in zip(live, sent_bytes)]
     bytes_sent_rate = sum(node_bytes_rate)
-    msgs_sent_rate = sum(per_node_rate(i, delta(i, m["msgs_sent"])) for i in indices)
+    msgs_sent_rate = sum(per_node_rate(i, delta(i, m["msgs_sent"])) for i in live)
     # Per-node median is comparable across committee sizes; fleet total is not.
     wire_p50 = statistics.median(node_bytes_rate) if node_bytes_rate else 0.0
 
     # Per-type medians are independent and need not sum to the total median.
     wire_types: dict[str, list[float]] = {}
-    for i in indices:
+    for i in live:
         fin_by = _family_by_label(fin[i], "network_bytes_sent_total", "type")
         base_by = _family_by_label(base[i], "network_bytes_sent_total", "type")
         w = node_window[i]
@@ -455,6 +470,10 @@ def collect(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
     summary = {
         "run_id": cfg.run_id, "protocol": cfg.protocol, "nodes": cfg.nodes,
         "rate": cfg.rate, "delta_ms": cfg.delta_ms, "fault": cfg.fault.kind,
+        "fault_nodes": sorted(cfg.fault.nodes) if cfg.fault.kind != "none" else [],
+        # Crash cohort plus any counter-reset node; excluded from all medians.
+        "excluded_nodes": reset_nodes,
+        "nodes_in_medians": len(live),
         # None means mimic mode or unavailable counters.
         "netem_dropped_packets": netem_dropped_packets,
         # Median per-node measurement duration.
@@ -498,9 +517,9 @@ def collect(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
                                              key=lambda kv: -kv[1])),
         "wire_kmsg_per_s": round(msgs_sent_rate / 1e3, 1),
         # Protocol health fields are empty or zero when unsupported.
-        **_straggler_fields(cfg, fin, base, indices, delta),
-        **_worker_health_fields(cfg, fin, base, indices, window),
-        **_starfish_memory_fields(cfg, fin, indices),
+        **_straggler_fields(cfg, fin, base, live, delta),
+        **_worker_health_fields(cfg, fin, base, live, window),
+        **_starfish_memory_fields(cfg, fin, live),
     }
     encoded = json.dumps(summary, indent=2, allow_nan=False)
     (out / "summary.json").write_text(encoded)

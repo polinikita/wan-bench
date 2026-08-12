@@ -113,6 +113,7 @@ def main(argv=None) -> int:
     fp.add_argument("--config", required=True)
     fsub = fp.add_subparsers(dest="fkind", required=True)
     c = fsub.add_parser("crash"); c.add_argument("--nodes", required=True)
+    rs = fsub.add_parser("restart"); rs.add_argument("--nodes", required=True)
     r = fsub.add_parser("ring"); r.add_argument("--pct", type=int, default=10)
     r.add_argument("--mode", default="cut")
     s = fsub.add_parser("split")
@@ -170,6 +171,8 @@ def main(argv=None) -> int:
 def _fault(cfg, ssh, hosts, args) -> int:
     if args.fkind == "crash":
         faults.crash(ssh, hosts, [int(x) for x in args.nodes.split(",")])
+    elif args.fkind == "restart":
+        faults.restart(ssh, hosts, [int(x) for x in args.nodes.split(",")])
     elif args.fkind == "ring":
         faults.ring(ssh, cfg, hosts, args.pct, args.mode)
     elif args.fkind == "split":

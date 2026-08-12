@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import pathlib
+import threading
 import time
 
-from . import faults, images, monitoring, prepare, timing
+from . import faults, images, monitoring, prepare, timeseries, timing
 from .aws import Aws
 from .collect import collect
 from .config import RunConfig
@@ -120,11 +123,18 @@ def run(cfg: RunConfig, outdir: str) -> dict:
         deploy(ssh, cfg, control, hosts)
         deploy_s = timing.since(deploy_start)
         # Apply timed faults without delaying collection.
+        fault_thread = None
         if cfg.fault.kind != "none":
-            _schedule_fault(ssh, cfg, hosts)
+            fault_thread = _schedule_fault(ssh, cfg, hosts, outdir)
         collect_start = time.monotonic()
         summary = collect(ssh, cfg, control, hosts, outdir)
         collect_s = timing.since(collect_start)
+        if fault_thread is not None:
+            fault_thread.join(timeout=30)
+            try:
+                timeseries.dump(ssh, cfg, control, outdir)
+            except Exception as exc:  # noqa: BLE001 -- the summary must survive
+                print(f"timeseries: WARNING dump failed: {exc}", flush=True)
         print(f"run: deploy took {deploy_s}s")
         print(f"run: collect took {collect_s}s")
         return summary
@@ -137,14 +147,52 @@ def run(cfg: RunConfig, outdir: str) -> dict:
             down(cfg)
 
 
-def _schedule_fault(ssh: Ssh, cfg: RunConfig, hosts: list) -> None:
-    import threading
+def _fault_delay_s(anchor_ms: float | None, at_s: float, now_s: float) -> float:
+    """Seconds to sleep so the fault fires at_s after the metrics window opens."""
+    anchor_s = now_s if anchor_ms is None else anchor_ms / 1000.0
+    return max(0.0, anchor_s + at_s - now_s)
 
+
+def _schedule_fault(ssh: Ssh, cfg: RunConfig, hosts: list,
+                    outdir: str) -> threading.Thread:
     def worker():
-        time.sleep(cfg.fault.at_s)
-        faults.apply_from_config(ssh, cfg, hosts)
-        if cfg.fault.kind in ("split", "blip") and cfg.fault.for_s > 0:
-            time.sleep(cfg.fault.for_s)
-            faults.clear(ssh, hosts)
+        timeline = {
+            "kind": cfg.fault.kind,
+            "nodes": sorted(cfg.fault.nodes),
+            "at_s": cfg.fault.at_s,
+            "for_s": cfg.fault.for_s,
+            "anchor_ms": cfg.metrics_active_at_ms,
+            "down_ms": None,
+            "up_ms": None,
+            "error": None,
+        }
+        try:
+            time.sleep(_fault_delay_s(cfg.metrics_active_at_ms, cfg.fault.at_s,
+                                      time.time()))
+            faults.apply_from_config(ssh, cfg, hosts)
+            timeline["down_ms"] = int(time.time() * 1000)
+            if cfg.fault.for_s > 0:
+                time.sleep(cfg.fault.for_s)
+                if cfg.fault.kind in ("split", "blip"):
+                    faults.clear(ssh, hosts)
+                    timeline["up_ms"] = int(time.time() * 1000)
+                elif cfg.fault.kind == "crash":
+                    faults.restart(ssh, hosts, cfg.fault.nodes)
+                    timeline["up_ms"] = int(time.time() * 1000)
+        except Exception as exc:  # noqa: BLE001 -- a dead fault thread must be loud
+            timeline["error"] = str(exc)
+            print(f"fault: FAILED: {exc}", flush=True)
+        finally:
+            _write_fault_timeline(outdir, timeline)
 
-    threading.Thread(target=worker, daemon=True).start()
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+    return thread
+
+
+def _write_fault_timeline(outdir: str, timeline: dict) -> None:
+    out = pathlib.Path(outdir)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "fault-timeline.json").write_text(json.dumps(timeline, indent=2))
+    print(f"fault: timeline written ({timeline['kind']}, "
+          f"down_ms={timeline['down_ms']}, up_ms={timeline['up_ms']})", flush=True)

@@ -59,6 +59,24 @@ def crash(ssh: Ssh, hosts: list[Host], nodes: list[int]) -> None:
     print(f"fault: crash-stopped nodes {sorted(nodes)}")
 
 
+def restart(ssh: Ssh, hosts: list[Host], nodes: list[int]) -> None:
+    """Restart crash-stopped validators in place (`docker start`, state kept)."""
+    unknown = sorted(set(nodes) - {h.index for h in hosts})
+    if unknown:
+        raise ValueError(f"unknown restart node indices: {unknown}")
+    dead = [h for h in hosts if h.index in set(nodes)]
+    # The vantage entrypoint truncates its logs on start; rotate them so the
+    # pre-crash evidence survives. Starfish images have no logs directory.
+    cmd = ("sudo bash -lc '"
+           "if [ -d /opt/wanbench/logs ]; then "
+           "cd /opt/wanbench/logs && "
+           "for f in *.log; do [ -e \"$f\" ] && mv \"$f\" \"$f.pre-restart\"; done; "
+           "fi; "
+           "docker start wanbench-node'")
+    ssh.fanout(dead, cmd)
+    print(f"fault: restarted nodes {sorted(nodes)}")
+
+
 def ring(ssh: Ssh, cfg: RunConfig, hosts: list[Host], pct: int, mode: str = "cut") -> None:
     n = len(hosts)
     if n < 2:

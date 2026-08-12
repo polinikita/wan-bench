@@ -1,0 +1,37 @@
+# Crash-and-restart fault run: 20 s healthy, kill f=13 validators for 20 s,
+# docker-restart them in place, observe for ~60 s more. See README (faults).
+
+run_id: crash-n40-autobahn-optimistic
+region: eu-west-1
+az: eu-west-1a
+instance_type: c5d.xlarge
+key_name: wanbench-key
+ssh_key_path: ~/.ssh/wanbench-key.pem
+ssh_user: ubuntu
+keep_monitoring_on_down: true
+
+protocol: autobahn-optimistic
+nodes: 40
+image: ghcr.io/polinikita/vantage-node@sha256:21fc32aabbddee2c547b9ad262bf8d2694a482a7baefc217f45e2e2e7eadcf50
+protocol_flags: []
+
+rate: 20000                   # 500 tx/s per validator.
+tx_size: 512
+tx_mode: random
+duration_s: 130               # 20 s healthy + 20 s outage + ~60 s observation.
+delta_ms: 200
+max_header_delay_ms: 100
+
+prometheus_scrape_interval_s: 5   # Resolve the dip/recovery curve.
+
+wan:
+  mode: netem
+  rtt_csv: latency/aws-10region-rtt.csv
+  jitter_ms: 0.0
+  halve_rtt: true
+
+fault:
+  kind: crash
+  at_s: 20                    # After the metrics-active window opens.
+  for_s: 20                   # Restart the killed containers after 20 s.
+  nodes: [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39]

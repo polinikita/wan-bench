@@ -135,6 +135,25 @@ Run configuration is defined by `RunConfig` in
 archive to the control instance, builds it there, and distributes it through a
 private registry.
 
+### Faults
+
+`fault.at_s` counts from the moment the metrics-active window opens, so
+`at_s: 20` injects 20 s into the measured window. `split` and `blip` clear
+after `for_s`. `crash` kills the containers with SIGKILL; with `for_s > 0` the
+same containers are restarted in place (`docker start`, state preserved) after
+`for_s`, while `for_s: 0` keeps them down. A crash-restart cycle must satisfy
+`at_s + for_s + 30 <= duration_s`. `wanbench fault restart --nodes i,j`
+recovers crashed containers manually.
+
+Fault runs write two extra artifacts next to `summary.json`:
+`fault-timeline.json` (epoch-ms down/up timestamps) and `timeseries.json`
+(Prometheus range queries over the whole window: committee median tx/s,
+per-node rates, live-validator count, and per-protocol recovery gauges).
+`summary.json` excludes the crash cohort from every median and lists it under
+`excluded_nodes`; use the time series for the dip and recovery. The
+`configs/crash-n40-*.yaml` files encode the paper's crash-restart scenario;
+a 5 s `prometheus_scrape_interval_s` is needed to resolve the recovery curve.
+
 ## Safety
 
 - Every resource is tagged with `Project=wan-bench` and `Run=<run-id>`.

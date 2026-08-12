@@ -34,8 +34,11 @@ class FaultConfig:
     """A fault to inject during a `run`. `kind` selects the mechanism."""
 
     kind: str = "none"  # none | crash | ring | split | blip
-    at_s: int = 40  # seconds after load start to inject
-    for_s: int = 15  # duration; crash is permanent regardless
+    # Seconds after the metrics-active window opens (not after deploy).
+    at_s: int = 40
+    # Duration. split/blip: rules are cleared after for_s. crash: for_s > 0
+    # restarts the killed containers in place after for_s; 0 keeps them down.
+    for_s: int = 15
     nodes: list[int] = field(default_factory=list)  # crash: which validators
     pct: int = 10  # ring: percent of each node's out-edges to cut
     group_a: list[int] = field(default_factory=list)  # split: side A
@@ -226,6 +229,8 @@ class RunConfig:
             raise ValueError(f"config: unknown fault kind {f.kind!r}")
         if f.kind == "crash" and not f.nodes:
             raise ValueError("config: crash fault needs fault.nodes")
+        if f.kind == "crash" and len(set(f.nodes)) >= self.nodes:
+            raise ValueError("config: crash fault must leave at least one node up")
         if f.kind == "split" and not (f.group_a and f.group_b):
             raise ValueError("config: split fault needs group_a and group_b")
         if f.mode not in ("cut", "drop"):
@@ -238,6 +243,12 @@ class RunConfig:
             raise ValueError(f"config: fault node indices out of range: {invalid}")
         if set(f.group_a) & set(f.group_b):
             raise ValueError("config: split fault groups must be disjoint")
+        if f.at_s < 0 or f.for_s < 0:
+            raise ValueError("config: fault.at_s and fault.for_s must be >= 0")
+        if f.kind == "crash" and f.for_s > 0 and f.at_s + f.for_s + 30 > self.duration_s:
+            raise ValueError(
+                "config: the crash-restart cycle must fit the measured window: "
+                "fault.at_s + fault.for_s + 30 <= duration_s")
 
     @staticmethod
     def _validate_ipv4_cidr(name: str, value: str | None,
