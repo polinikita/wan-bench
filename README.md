@@ -220,6 +220,9 @@ The measured paper record is in
 The Starfish payload-compaction validation is in
 [`recorded/paper-n100-starfish-m5d-gc-20260811`](recorded/paper-n100-starfish-m5d-gc-20260811).
 
+The Vantage n=20 latency, traffic, and seal-route study is in
+[`recorded/vantage-n20-pipeline-20260812`](recorded/vantage-n20-pipeline-20260812).
+
 ## Tests
 
 Run the offline regression suite:

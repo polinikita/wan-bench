@@ -1,0 +1,187 @@
+Latency table: real 10-AWS-region RTT matrix (default, committee index i -> region i % 10)
+
+=== local-benchmark configuration ===
+Nodes: 20   Workers/node: 1   Rate: 100 tx/s   Tx size: 512 B
+Protocol: Vantage   Mode: Random   Duration: 60 s   Base port: 24000
+Delta: 200 ms   Max batch delay: 20 ms   Max header delay: 100 ms
+Data dir: /tmp/vantage-n20-matrix-r3
+Availability acknowledgments: positional claims on AGB echoes (default)
+Digest-named AGB statements: ON (Vantage ECHO/READY name their proposal by hash instead of by value)
+Vantage committee identifiers: one-byte indices (default)
+======================================
+
+Prometheus target file: /tmp/vantage-n20-matrix-r3/prometheus.yaml
+Bring up monitoring (optional): docker compose -f monitoring/docker-compose.yml up -d
+Grafana (once up): http://localhost:3003
+
+Running benchmark (60 sec)...
+
+-----------------------------------------
+ SUMMARY:
+-----------------------------------------
+ + RESULTS:
+ Consensus TPS: 99 tx/s
+ Consensus BPS: 50842 B/s
+
+ Real transaction latency: avg 435.87 ms (stddev 65.77), p50/p90/p99 437.00/524.50/589.50 ms (5958 txs, 0 misses)
+ Materialised transaction latency: avg 441.96 ms (stddev 65.78), p50/p90/p99 443.00/530.50/595.50 ms (5958 txs)
+ Pipeline latency (pooled average; median node percentiles):
+   tx submission -> batch seal                       avg   11.24 ms  p50/p90/p99   11.00/  19.50/  22.00 ms  (20 nodes)
+   ordered commit -> materialization                 avg    6.09 ms  p50/p90/p99    6.00/   7.00/   8.00 ms  (20 nodes)
+   worker batch hash + durable store                 avg    0.00 ms  p50/p90/p99    0.00/   0.00/   0.01 ms  (20 nodes)
+   first batch digest -> block publication           avg   51.07 ms  p50/p90/p99   51.17/  91.77/ 101.07 ms  (20 nodes)
+   block publication -> quorum availability          avg  292.22 ms  p50/p90/p99  289.13/ 351.99/ 391.21 ms  (20 nodes)
+   block publication -> first proposal inclusion     avg  175.05 ms  p50/p90/p99  174.16/ 277.58/ 319.78 ms  (20 nodes)
+   proposal receipt -> local AGB seal                avg  174.70 ms  p50/p90/p99  181.89/ 238.01/ 274.57 ms  (20 nodes)
+   local AGB seal -> ordered view finalization       avg    0.04 ms  p50/p90/p99    0.03/   0.04/   0.10 ms  (20 nodes)
+   block publication -> ordered block commit         avg  372.52 ms  p50/p90/p99  368.48/ 431.96/ 464.90 ms  (20 nodes)
+ + GOODPUT / NETWORK:
+ Submitted: 6000 tx(s), 3072000 B  |  Sequenced (committed): 5958 tx(s), 3050496 B
+ Wire: 219545299 B sent, 222640074 B received (1464579 messages sent)
+ Overhead bytes per sequenced byte: 71.970
+ Per-validator outbound bytes per sequenced byte: min/median/max 3.5684/3.5990/3.6464
+ Messages per committed tx: 245.817
+ Bandwidth efficiency (512B-normalized): 71.970
+ Traffic by category (messages, bytes, % of sent bytes):
+   agb                  703931 msgs      77991352 B  (38.2%)
+   control              252434 msgs       5819776 B  (2.8%)
+   data-blocks          225866 msgs      39787300 B  (19.5%)
+   pacemaker               475 msgs          8075 B  (0.0%)
+   payload              114000 msgs      60648000 B  (29.7%)
+   payload-repair          542 msgs         43360 B  (0.0%)
+   primary-worker       136863 msgs       8942776 B  (4.4%)
+   protocol-repair         700 msgs        209489 B  (0.1%)
+   reconnect-replay       1914 msgs         67452 B  (0.0%)
+   state-sync            27854 msgs      10908679 B  (5.3%)
+ Traffic by message type (category, messages, serialized bytes):
+   Batch                              payload              114000 msgs      60648000 B
+   BatchRequest                       payload-repair          271 msgs         17344 B
+   Committed                          primary-worker        17128 msgs       4153376 B
+   ControlCommit                      control               82612 msgs       1404404 B
+   ControlEcho                        control               82840 msgs       2153840 B
+   ControlInit                        control                4142 msgs        107692 B
+   ControlReady                       control               82840 msgs       2153840 B
+   Header                             data-blocks          225866 msgs      39787300 B
+   HeadersRequest                     protocol-repair         412 msgs         20188 B
+   OthersBatch                        primary-worker       113735 msgs       4549400 B
+   OurBatch                           primary-worker         6000 msgs        240000 B
+   Replay                             reconnect-replay        995 msgs         51069 B
+   Synchronize                        payload-repair          271 msgs         26016 B
+   VantageBodyFetch                   protocol-repair         144 msgs          7056 B
+   VantageBodyServe                   protocol-repair         144 msgs        182245 B
+   VantageEchoDigest                  agb                  343577 msgs      28854388 B
+   VantagePropose                     agb                   17214 msgs      28205424 B
+   VantageReadyDigest                 agb                  343140 msgs      20931540 B
+   VantageReplayDone                  reconnect-replay        380 msgs          7220 B
+   VantageResumeHello                 reconnect-replay        539 msgs          9163 B
+   VantageSequenceAnnounceBatch       state-sync            27854 msgs      10908679 B
+   VantageWish                        pacemaker               475 msgs          8075 B
+ Lane resume: 0 requests sent, 0 blocks served, 0 sends dropped
+
+ Node 0 seal routes: direct_full=192, fast_full=711
+ Node 1 seal routes: direct_full=252, fast_full=651
+ Node 2 seal routes: direct_full=538, fast_full=364
+ Node 3 seal routes: direct_full=361, fast_full=541
+ Node 4 seal routes: direct_full=230, fast_full=672
+ Node 5 seal routes: direct_full=3, fast_full=900
+ Node 6 seal routes: direct_full=542, fast_full=361
+ Node 7 seal routes: direct_full=374, fast_full=528
+ Node 8 seal routes: direct_full=154, fast_full=748
+ Node 9 seal routes: direct_full=65, fast_full=838
+ Node 10 seal routes: direct_full=191, fast_full=712
+ Node 11 seal routes: direct_full=253, fast_full=650
+ Node 12 seal routes: direct_full=538, fast_full=364
+ Node 13 seal routes: direct_full=361, fast_full=541
+ Node 14 seal routes: direct_full=231, fast_full=671
+ Node 15 seal routes: direct_full=3, fast_full=900
+ Node 16 seal routes: direct_full=542, fast_full=361
+ Node 17 seal routes: direct_full=373, fast_full=529
+ Node 18 seal routes: direct_full=147, fast_full=755
+ Node 19 seal routes: direct_full=57, fast_full=846
+ Total seal routes (summed across nodes): direct_full=5407, fast_full=12643
+-----------------------------------------
+
+-----------------------------------------
+ SUMMARY -- STEADY-STATE (client tasks stopped, 1320 ms drain before re-read):
+-----------------------------------------
+ + RESULTS:
+ Consensus TPS: 100 tx/s
+ Consensus BPS: 51200 B/s
+
+ Real transaction latency: avg 436.04 ms (stddev 65.80), p50/p90/p99 437.50/524.50/589.50 ms (6000 txs, 0 misses)
+ Materialised transaction latency: avg 442.13 ms (stddev 65.81), p50/p90/p99 443.50/530.50/595.50 ms (6000 txs)
+ Pipeline latency (pooled average; median node percentiles):
+   tx submission -> batch seal                       avg   11.24 ms  p50/p90/p99   11.00/  19.50/  22.00 ms  (20 nodes)
+   ordered commit -> materialization                 avg    6.09 ms  p50/p90/p99    6.00/   7.00/   8.00 ms  (20 nodes)
+   worker batch hash + durable store                 avg    0.00 ms  p50/p90/p99    0.00/   0.00/   0.01 ms  (20 nodes)
+   first batch digest -> block publication           avg   51.14 ms  p50/p90/p99   51.24/  91.80/ 101.07 ms  (20 nodes)
+   block publication -> quorum availability          avg  292.30 ms  p50/p90/p99  289.13/ 352.06/ 391.21 ms  (20 nodes)
+   block publication -> first proposal inclusion     avg  175.08 ms  p50/p90/p99  174.16/ 277.58/ 319.78 ms  (20 nodes)
+   proposal receipt -> local AGB seal                avg  174.70 ms  p50/p90/p99  181.89/ 238.01/ 274.57 ms  (20 nodes)
+   local AGB seal -> ordered view finalization       avg    0.04 ms  p50/p90/p99    0.03/   0.04/   0.10 ms  (20 nodes)
+   block publication -> ordered block commit         avg  372.62 ms  p50/p90/p99  368.48/ 431.96/ 464.90 ms  (20 nodes)
+ + GOODPUT / NETWORK:
+ Submitted: 6000 tx(s), 3072000 B  |  Sequenced (committed): 6000 tx(s), 3072000 B
+ Wire: 223106380 B sent, 226199615 B received (1492588 messages sent)
+ Overhead bytes per sequenced byte: 72.626
+ Per-validator outbound bytes per sequenced byte: min/median/max 3.6000/3.6270/3.6753
+ Messages per committed tx: 248.765
+ Bandwidth efficiency (512B-normalized): 72.626
+ Traffic by category (messages, bytes, % of sent bytes):
+   agb                  719777 msgs      79739656 B  (38.4%)
+   control              258381 msgs       5955930 B  (2.9%)
+   data-blocks          231072 msgs      40619424 B  (19.6%)
+   pacemaker               475 msgs          8075 B  (0.0%)
+   payload              114000 msgs      60648000 B  (29.2%)
+   payload-repair          542 msgs         43360 B  (0.0%)
+   primary-worker       137280 msgs       8985600 B  (4.3%)
+   protocol-repair         704 msgs        212785 B  (0.1%)
+   reconnect-replay       1914 msgs         67452 B  (0.0%)
+   state-sync            28443 msgs      11159004 B  (5.4%)
+ Traffic by message type (category, messages, serialized bytes):
+   Batch                              payload              114000 msgs      60648000 B
+   BatchRequest                       payload-repair          271 msgs         17344 B
+   Committed                          primary-worker        17280 msgs       4185600 B
+   ControlCommit                      control               84664 msgs       1439288 B
+   ControlEcho                        control               84740 msgs       2203240 B
+   ControlInit                        control                4237 msgs        110162 B
+   ControlReady                       control               84740 msgs       2203240 B
+   Header                             data-blocks          231072 msgs      40619424 B
+   HeadersRequest                     protocol-repair         412 msgs         20188 B
+   OthersBatch                        primary-worker       114000 msgs       4560000 B
+   OurBatch                           primary-worker         6000 msgs        240000 B
+   Replay                             reconnect-replay        995 msgs         51069 B
+   Synchronize                        payload-repair          271 msgs         26016 B
+   VantageBodyFetch                   protocol-repair         146 msgs          7154 B
+   VantageBodyServe                   protocol-repair         146 msgs        185443 B
+   VantageEchoDigest                  agb                  351405 msgs      29511940 B
+   VantagePropose                     agb                   17594 msgs      28830258 B
+   VantageReadyDigest                 agb                  350778 msgs      21397458 B
+   VantageReplayDone                  reconnect-replay        380 msgs          7220 B
+   VantageResumeHello                 reconnect-replay        539 msgs          9163 B
+   VantageSequenceAnnounceBatch       state-sync            28443 msgs      11159004 B
+   VantageWish                        pacemaker               475 msgs          8075 B
+ Lane resume: 0 requests sent, 0 blocks served, 0 sends dropped
+
+ Node 0 seal routes: direct_full=196, fast_full=727
+ Node 1 seal routes: direct_full=257, fast_full=666
+ Node 2 seal routes: direct_full=551, fast_full=372
+ Node 3 seal routes: direct_full=370, fast_full=553
+ Node 4 seal routes: direct_full=235, fast_full=688
+ Node 5 seal routes: direct_full=3, fast_full=920
+ Node 6 seal routes: direct_full=554, fast_full=369
+ Node 7 seal routes: direct_full=384, fast_full=539
+ Node 8 seal routes: direct_full=157, fast_full=766
+ Node 9 seal routes: direct_full=67, fast_full=856
+ Node 10 seal routes: direct_full=195, fast_full=728
+ Node 11 seal routes: direct_full=258, fast_full=665
+ Node 12 seal routes: direct_full=551, fast_full=372
+ Node 13 seal routes: direct_full=370, fast_full=553
+ Node 14 seal routes: direct_full=236, fast_full=687
+ Node 15 seal routes: direct_full=3, fast_full=920
+ Node 16 seal routes: direct_full=554, fast_full=369
+ Node 17 seal routes: direct_full=383, fast_full=540
+ Node 18 seal routes: direct_full=150, fast_full=773
+ Node 19 seal routes: direct_full=59, fast_full=864
+ Total seal routes (summed across nodes): direct_full=5533, fast_full=12927
+-----------------------------------------

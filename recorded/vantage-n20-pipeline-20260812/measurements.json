@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "kind": "vantage-n20-pipeline-study",
+  "recorded_at": "2026-08-12",
+  "source": {
+    "repository": "polinikita/vantage",
+    "commit": "097784337333954dd51692cee71a32e711e0e3cb",
+    "features": ["pipeline-tracing"],
+    "binary_sha256": "7dd77a040cd8529dd0a94b7daedca058533c7de108f00d9962fe22efd31132c1"
+  },
+  "host": {
+    "cpu": "Apple M4 Pro",
+    "logical_cpus": 14,
+    "memory_bytes": 51539607552,
+    "os": "macOS 15.7.5",
+    "rustc": "1.95.0"
+  },
+  "workload": {
+    "validators": 20,
+    "workers_per_validator": 1,
+    "offered_transactions_per_second": 100,
+    "transaction_bytes": 512,
+    "transaction_mode": "random",
+    "client_duration_seconds": 60,
+    "drain_milliseconds": 1320,
+    "delta_milliseconds": 200,
+    "max_batch_delay_milliseconds": 20,
+    "max_header_delay_milliseconds": 100,
+    "availability_claims": "positional claims on AGB echoes",
+    "digest_named_agb_statements": true,
+    "compact_committee_identifiers": true
+  },
+  "latency_models": {
+    "aws_matrix": {
+      "description": "Ten-region AWS RTT matrix repeated by committee index modulo 10",
+      "off_diagonal_min_milliseconds_at_n20": 1,
+      "off_diagonal_median_milliseconds_at_n20": 143,
+      "off_diagonal_max_milliseconds_at_n20": 309,
+      "jitter_milliseconds": 0
+    },
+    "uniform_143_ms": {
+      "description": "Every distinct validator pair has 143 ms RTT",
+      "rtt_milliseconds": 143,
+      "jitter_milliseconds": 0
+    }
+  },
+  "median_of_three": {
+    "aws_matrix": {
+      "ordered_ms": {"p50": 438.0, "p90": 525.5, "p99": 591.5},
+      "materialized_ms": {"p50": 444.0, "p90": 532.0, "p99": 598.0},
+      "pipeline_ms": {
+        "tx_submission_to_batch_seal": {"p50": 11.0, "p90": 20.0, "p99": 22.0},
+        "ordered_commit_to_materialization": {"p50": 6.0, "p90": 7.0, "p99": 8.0},
+        "worker_batch_hash_and_durable_store": {"p50": 0.0, "p90": 0.0, "p99": 0.01},
+        "first_batch_digest_to_block_publication": {"p50": 51.02, "p90": 91.40, "p99": 100.95},
+        "block_publication_to_quorum_availability": {"p50": 289.13, "p90": 352.06, "p99": 390.89},
+        "block_publication_to_first_proposal_inclusion": {"p50": 174.77, "p90": 280.19, "p99": 319.34},
+        "proposal_receipt_to_local_agb_seal": {"p50": 182.22, "p90": 238.90, "p99": 274.65},
+        "local_agb_seal_to_ordered_view_finalization": {"p50": 0.03, "p90": 0.04, "p99": 0.10},
+        "block_publication_to_ordered_block_commit": {"p50": 368.48, "p90": 432.29, "p99": 466.04}
+      },
+      "fast_full_percent": 70.341564
+    },
+    "uniform_143_ms": {
+      "ordered_ms": {"p50": 348.0, "p90": 403.0, "p99": 429.0},
+      "materialized_ms": {"p50": 354.0, "p90": 409.0, "p99": 435.0},
+      "pipeline_ms": {
+        "tx_submission_to_batch_seal": {"p50": 11.0, "p90": 20.0, "p99": 22.0},
+        "ordered_commit_to_materialization": {"p50": 6.0, "p90": 7.0, "p99": 8.0},
+        "worker_batch_hash_and_durable_store": {"p50": 0.0, "p90": 0.0, "p99": 0.01},
+        "first_batch_digest_to_block_publication": {"p50": 51.91, "p90": 91.70, "p99": 100.94},
+        "block_publication_to_quorum_availability": {"p50": 278.03, "p90": 311.02, "p99": 320.20},
+        "block_publication_to_first_proposal_inclusion": {"p50": 196.04, "p90": 231.04, "p99": 240.34},
+        "proposal_receipt_to_local_agb_seal": {"p50": 81.44, "p90": 82.76, "p99": 162.36},
+        "local_agb_seal_to_ordered_view_finalization": {"p50": 0.02, "p90": 0.04, "p99": 0.09},
+        "block_publication_to_ordered_block_commit": {"p50": 279.82, "p90": 312.59, "p99": 321.82}
+      },
+      "fast_full_percent": 100.0
+    }
+  },
+  "representative_aws_matrix_traffic": {
+    "run": 2,
+    "wire_sent_bytes": 223106380,
+    "logical_unicast_messages": 1492588,
+    "wire_sent_bytes_per_second_committee": 3718439.67,
+    "wire_sent_bytes_per_second_per_validator": 185921.98,
+    "traffic_by_category": {
+      "agb": {"messages": 719777, "serialized_bytes": 79739656, "percent": 38.4},
+      "payload": {"messages": 114000, "serialized_bytes": 60648000, "percent": 29.2},
+      "data_blocks": {"messages": 231072, "serialized_bytes": 40619424, "percent": 19.6},
+      "state_sync": {"messages": 28443, "serialized_bytes": 11159004, "percent": 5.4},
+      "primary_worker": {"messages": 137280, "serialized_bytes": 8985600, "percent": 4.3},
+      "control": {"messages": 258381, "serialized_bytes": 5955930, "percent": 2.9},
+      "protocol_repair": {"messages": 704, "serialized_bytes": 212785, "percent": 0.1},
+      "reconnect_replay": {"messages": 1914, "serialized_bytes": 67452, "percent": 0.0},
+      "payload_repair": {"messages": 542, "serialized_bytes": 43360, "percent": 0.0},
+      "pacemaker": {"messages": 475, "serialized_bytes": 8075, "percent": 0.0}
+    }
+  },
+  "tracing_overhead_check": {
+    "duration_seconds": 30,
+    "submitted_transactions": 3000,
+    "normal": {"sequenced_transactions": 3000, "order_avg_ms": 436.16, "order_p50_ms": 438.0, "order_p90_ms": 525.0, "order_p99_ms": 597.0},
+    "traced": {"sequenced_transactions": 3000, "order_avg_ms": 436.15, "order_p50_ms": 437.0, "order_p90_ms": 524.0, "order_p99_ms": 590.5}
+  },
+  "runs": [
+    {"model": "aws_matrix", "run": 1, "log": "logs/aws-matrix-1.log", "order_ms": {"avg": 436.49, "p50": 438.0, "p90": 525.5, "p99": 591.5}, "materialized_ms": {"avg": 442.58, "p50": 444.0, "p90": 532.0, "p99": 598.0}, "proposal_to_seal_ms": {"p50": 182.22, "p90": 238.90, "p99": 274.65}, "block_to_commit_ms": {"p50": 368.30, "p90": 433.25, "p99": 466.04}, "fast_full": 12993, "direct_full": 5447, "fast_full_percent": 70.460954, "wire_sent_bytes": 223017989, "wire_sent_messages": 1492035},
+    {"model": "aws_matrix", "run": 2, "log": "logs/aws-matrix-2.log", "order_ms": {"avg": 436.04, "p50": 437.5, "p90": 524.5, "p99": 589.5}, "materialized_ms": {"avg": 442.13, "p50": 443.5, "p90": 530.5, "p99": 595.5}, "proposal_to_seal_ms": {"p50": 181.89, "p90": 238.01, "p99": 274.57}, "block_to_commit_ms": {"p50": 368.48, "p90": 431.96, "p99": 464.90}, "fast_full": 12927, "direct_full": 5533, "fast_full_percent": 70.027086, "wire_sent_bytes": 223106380, "wire_sent_messages": 1492588},
+    {"model": "aws_matrix", "run": 3, "log": "logs/aws-matrix-3.log", "order_ms": {"avg": 436.71, "p50": 438.0, "p90": 526.0, "p99": 594.5}, "materialized_ms": {"avg": 443.01, "p50": 444.5, "p90": 532.0, "p99": 601.0}, "proposal_to_seal_ms": {"p50": 182.54, "p90": 255.74, "p99": 275.19}, "block_to_commit_ms": {"p50": 371.44, "p90": 432.29, "p99": 468.07}, "fast_full": 12933, "direct_full": 5453, "fast_full_percent": 70.341564, "wire_sent_bytes": 222861768, "wire_sent_messages": 1489924},
+    {"model": "uniform_143_ms", "run": 1, "log": "logs/uniform-143ms-1.log", "order_ms": {"avg": 346.23, "p50": 347.0, "p90": 399.0, "p99": 428.0}, "materialized_ms": {"avg": 352.49, "p50": 353.0, "p90": 406.0, "p99": 434.0}, "proposal_to_seal_ms": {"p50": 81.44, "p90": 82.76, "p99": 162.36}, "block_to_commit_ms": {"p50": 278.79, "p90": 312.50, "p99": 321.46}, "fast_full": 15340, "direct_full": 0, "fast_full_percent": 100.0, "wire_sent_bytes": 206246225, "wire_sent_messages": 1403267},
+    {"model": "uniform_143_ms", "run": 2, "log": "logs/uniform-143ms-2.log", "order_ms": {"avg": 346.65, "p50": 348.0, "p90": 403.0, "p99": 429.0}, "materialized_ms": {"avg": 352.98, "p50": 354.0, "p90": 409.0, "p99": 435.0}, "proposal_to_seal_ms": {"p50": 81.36, "p90": 82.61, "p99": 162.34}, "block_to_commit_ms": {"p50": 279.82, "p90": 312.59, "p99": 321.82}, "fast_full": 15340, "direct_full": 0, "fast_full_percent": 100.0, "wire_sent_bytes": 205781910, "wire_sent_messages": 1404046},
+    {"model": "uniform_143_ms", "run": 3, "log": "logs/uniform-143ms-3.log", "order_ms": {"avg": 358.10, "p50": 358.0, "p90": 416.0, "p99": 460.0}, "materialized_ms": {"avg": 364.45, "p50": 365.0, "p90": 423.0, "p99": 467.0}, "proposal_to_seal_ms": {"p50": 82.48, "p90": 99.49, "p99": 178.24}, "block_to_commit_ms": {"p50": 290.80, "p90": 329.85, "p99": 356.66}, "fast_full": 14920, "direct_full": 0, "fast_full_percent": 100.0, "wire_sent_bytes": 203887774, "wire_sent_messages": 1380040}
+  ]
+}

@@ -1,0 +1,12 @@
+Matched local tracing A/B, 20 validators, 100 tx/s, 512-byte random transactions,
+AWS RTT matrix, 30-second client interval.
+
+normal release build:
+  submitted/sequenced: 3000/3000 transactions
+  order avg/p50/p90/p99: 436.16/438/525/597 ms
+
+pipeline-tracing release build:
+  submitted/sequenced: 3000/3000 transactions
+  order avg/p50/p90/p99: 436.15/437/524/590.5 ms
+
+The throughput is identical and the observed latency difference is below run noise.
