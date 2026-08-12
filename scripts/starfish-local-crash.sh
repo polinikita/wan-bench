@@ -116,10 +116,11 @@ poller() {
         ts="$(python3 -c 'import time;print(int(time.time()*1000))')"
         for ((i = 0; i < N; i++)); do
             local port=$((1500 + N + i))
+            # Samples may carry labels: `name{node="node-0"} value`.
             curl -fsS --max-time 1 "http://127.0.0.1:$port/metrics" 2>/dev/null |
                 awk -v ts="$ts" -v n="$i" '
-                    /^sequenced_transactions_total /{seq=$2}
-                    /^commit_index /{ci=$2}
+                    /^sequenced_transactions_total[{ ]/{seq=$NF}
+                    /^commit_index[{ ]/{ci=$NF}
                     END{if (seq != "" || ci != "") printf "%s,%s,%s,%s\n", ts, n, seq, ci}' \
                 >> "$CSV" || true
         done
@@ -134,13 +135,16 @@ poller & POLLER_PID=$!
 # Anchor the healthy window at first commit progress, not at process start:
 # the generator waits initial_delay (~10 s) before offering load.
 echo "starfish-local-crash: waiting for first sequenced transactions"
+progressed() {
+    # Numeric coercion keeps the CSV header from matching.
+    tail -n "$N" "$CSV" 2>/dev/null |
+        awk -F, '$3 + 0 > 0 {found=1} END {exit !found}'
+}
 for _ in $(seq 1 60); do
-    if tail -n "$N" "$CSV" 2>/dev/null | awk -F, '$3 > 0 {found=1} END {exit !found}'; then
-        break
-    fi
+    if progressed; then break; fi
     sleep 1
 done
-tail -n "$N" "$CSV" | awk -F, '$3 > 0 {found=1} END {exit !found}' || {
+progressed || {
     echo "starfish-local-crash: no progress after 60s; see $WORKDIR/logs" >&2; exit 1; }
 
 echo "starfish-local-crash: healthy for ${AT}s"
@@ -163,6 +167,8 @@ victims = {int(v) for v in sys.argv[4].split()}
 rows = [(int(r["ts_ms"]), int(r["node"]), float(r["sequenced"] or 0),
          float(r["commit_index"] or 0))
         for r in csv.DictReader(open(path)) if r["sequenced"] or r["commit_index"]]
+if not rows:
+    sys.exit("starfish-local-crash: no samples collected -- poller failure")
 
 def rate(node, lo, hi):
     pts = sorted((ts, s) for ts, n, s, _ in rows if n == node and lo <= ts < hi)
