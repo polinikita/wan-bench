@@ -193,7 +193,50 @@ class SweepTests(unittest.TestCase):
         self.assertRegex(
             output.getvalue(),
             r"sweep: point 1/1 completed in \d+s; attempts=1; "
-            r"offered=100, committed=99\.5 tx/s",
+            r"useful-offered=100, rate=100, committed=99\.5 tx/s",
+        )
+
+    def test_adversarial_sweep_keeps_useful_rate_fixed(self):
+        cfg = RunConfig(
+            nodes=2,
+            rate=100,
+            correct_load_only=True,
+            image="image",
+            data_lane_drop_publishers=[0],
+            data_lane_drop_receivers=[1],
+        )
+        points = iter([summary(100, 100.0), summary(100, 80.0)])
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(sweep_mod, "up",
+                          return_value=(object(), self.ssh, self.hosts, object())), \
+             patch.object(sweep_mod, "generate_keys", return_value=[]), \
+             patch.object(sweep_mod, "_reset_nodes"), \
+             patch.object(sweep_mod, "deploy"), \
+             patch.object(sweep_mod, "collect",
+                          side_effect=lambda *a, **k: next(points)), \
+             patch.object(sweep_mod.monitoring, "configure_targets") as configure, \
+             patch.object(sweep_mod.faults, "clear"), \
+             patch.object(sweep_mod.prepare, "clear_wan"), \
+             patch.object(sweep_mod, "down"):
+            result = sweep_mod.sweep(
+                cfg,
+                [0, 100],
+                tmp,
+                sweep_field="adversarial_rate",
+                warmup_s=0,
+                window_s=1,
+                stop_on_drop=False,
+            )
+
+        self.assertEqual([point["rate"] for point in result["points"]], [100, 100])
+        self.assertEqual(
+            [point["adversarial_rate"] for point in result["points"]],
+            [0, 100],
+        )
+        labels = [call.args[3][0][1] for call in configure.call_args_list]
+        self.assertEqual(
+            [label["wanbench_adversarial_rate"] for label in labels],
+            ["0", "100"],
         )
 
     def test_failure_is_checkpointed_and_tears_down(self):

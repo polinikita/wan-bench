@@ -45,6 +45,7 @@ class CampaignVariant:
 class CampaignConfig:
     name: str
     output: str
+    sweep_field: str
     rates: list[int]
     warmup_s: int
     window_s: int
@@ -62,7 +63,7 @@ class CampaignConfig:
         if not isinstance(raw, dict):
             raise ValueError("campaign config must be a mapping")
         allowed = {
-            "name", "output", "rates", "warmup_s", "window_s",
+            "name", "output", "sweep_field", "rates", "warmup_s", "window_s",
             "drop_tolerance_pct", "stop_on_drop", "strict_through_rate",
             "min_offered_throughput_pct",
             "committee_sizes",
@@ -102,10 +103,18 @@ class CampaignConfig:
             items = []
         if not isinstance(items, list):
             raise ValueError("campaign: variants must be a list")
-        rates = raw.get("rates") or []
+        sweep_field = raw.get("sweep_field", "rate")
+        if sweep_field not in ("rate", "adversarial_rate"):
+            raise ValueError(
+                "campaign: sweep_field must be 'rate' or 'adversarial_rate'")
+        rates = raw.get("rates")
         if (not isinstance(rates, list) or not rates or
-                any(type(rate) is not int or rate <= 0 for rate in rates)):
-            raise ValueError("campaign: rates must be positive integers")
+                any(type(rate) is not int or
+                    (rate < 0 if sweep_field == "adversarial_rate" else rate <= 0)
+                    for rate in rates)):
+            qualifier = ("non-negative" if sweep_field == "adversarial_rate"
+                         else "positive")
+            raise ValueError(f"campaign: rates must be {qualifier} integers")
         if rates != sorted(set(rates)):
             raise ValueError("campaign: rates must be strictly increasing")
 
@@ -166,6 +175,7 @@ class CampaignConfig:
         campaign = cls(
             name=name,
             output=output,
+            sweep_field=sweep_field,
             rates=rates,
             warmup_s=warmup_s,
             window_s=window_s,
@@ -204,16 +214,23 @@ class CampaignConfig:
             values.update(copy.deepcopy(variant.overrides))
             values["nodes"] = nodes
             values["run_id"] = self.name
-            values["rate"] = self.rates[0]
+            values[self.sweep_field] = self.rates[0]
             values["duration_s"] = self.warmup_s + self.window_s
             cfg = RunConfig.from_dict(values)
             if cfg.fault.kind != "none":
                 raise ValueError("campaign variants cannot inject faults")
-            invalid = [rate for rate in self.rates
-                       if rate < cfg.nodes or rate % cfg.nodes]
+            invalid = []
+            for value in self.rates:
+                probe = copy.deepcopy(cfg)
+                setattr(probe, self.sweep_field, value)
+                try:
+                    probe.validate()
+                except ValueError:
+                    invalid.append(value)
             if invalid:
                 raise ValueError(
-                    f"campaign: rates {invalid} are not divisible by {cfg.nodes}")
+                    f"campaign: {self.sweep_field} values {invalid} are invalid for "
+                    f"the effective workload")
             configs.append((variant.name, cfg))
         return configs
 
@@ -276,6 +293,7 @@ def preflight(campaign: CampaignConfig, only: set[str] | None = None) -> tuple[
         "instances": first.nodes + 1,
         "instance_type": first.instance_type or "auto",
         "az": first.az or "auto-select one AZ",
+        "sweep_field": campaign.sweep_field,
         "rates": campaign.rates,
         "warmup_s": campaign.warmup_s,
         "window_s": campaign.window_s,
@@ -306,12 +324,14 @@ def print_plan(report: dict) -> None:
         print(f"fleet: {report['instances']} x {report['instance_type']} in "
               f"{report['az']}")
     print(f"variants: {', '.join(report['variants'])}")
-    print(f"rates: {','.join(str(rate) for rate in report['rates'])} tx/s")
+    print(f"{report['sweep_field']}: "
+          f"{','.join(str(rate) for rate in report['rates'])} tx/s")
     print(f"timing: {report['warmup_s']}s warmup + {report['window_s']}s window; "
           f"at least {hours:.1f}h total")
     strict = report["strict_through_rate"]
-    print(f"validation: strict at all rates" if strict is None else
-          f"validation: strict through {strict:,} tx/s; exploratory above")
+    print("validation: strict at all points" if strict is None else
+          f"validation: strict through {strict:,} {report['sweep_field']} tx/s; "
+          "exploratory above")
     print(f"early stop: {'on' if report['stop_on_drop'] else 'off'}")
     floor = report["min_offered_throughput_pct"]
     if floor is not None:
@@ -340,6 +360,7 @@ def _definition(campaign: CampaignConfig,
                 configs: list[tuple[str, RunConfig]]) -> dict:
     return {
         "name": campaign.name,
+        "sweep_field": campaign.sweep_field,
         "rates": campaign.rates,
         "warmup_s": campaign.warmup_s,
         "window_s": campaign.window_s,
@@ -364,6 +385,7 @@ def _new_state(campaign: CampaignConfig,
         "error": None,
         "started_at": now,
         "finished_at": None,
+        "sweep_field": campaign.sweep_field,
         "rates": campaign.rates,
         "warmup_s": campaign.warmup_s,
         "window_s": campaign.window_s,
@@ -531,6 +553,7 @@ def execute(campaign: CampaignConfig, configs: list[tuple[str, RunConfig]],
                     cfg,
                     campaign.rates,
                     str(out / name),
+                    sweep_field=campaign.sweep_field,
                     warmup_s=campaign.warmup_s,
                     window_s=campaign.window_s,
                     drop_tolerance_pct=campaign.drop_tolerance_pct,

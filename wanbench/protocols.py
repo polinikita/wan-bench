@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import abc
+import base64
 import json
 
 from .config import RunConfig
@@ -50,18 +51,36 @@ class ProtocolAdapter(abc.ABC):
 
 
 def _docker_prefix(cfg: RunConfig, idx: int, entrypoint: str, env_extra: str = "") -> str:
-    # Each node receives an equal share of the aggregate rate.
-    if cfg.rate < cfg.nodes or cfg.rate % cfg.nodes:
+    publishers = set(getattr(cfg, "_data_lane_drop_runtime_publishers", []))
+    if (cfg.correct_load_only or cfg.adversarial_rate) and not publishers:
         raise ValueError(
-            f"aggregate rate {cfg.rate} must be >= and divisible by {cfg.nodes} nodes")
-    rate_each = cfg.rate // cfg.nodes
+            "leader-relay workload requires resolved withholding publisher indices")
+    useful_nodes = [
+        node for node in range(cfg.nodes)
+        if not cfg.correct_load_only or node not in publishers
+    ]
+    if cfg.rate < len(useful_nodes) or cfg.rate % len(useful_nodes):
+        raise ValueError(
+            f"aggregate useful rate {cfg.rate} must be >= and divisible by "
+            f"{len(useful_nodes)} load-bearing validators")
+    rate_each = cfg.rate // len(useful_nodes) if idx in useful_nodes else 0
+    if cfg.adversarial_rate and cfg.adversarial_rate % len(publishers):
+        raise ValueError(
+            f"aggregate adversarial rate {cfg.adversarial_rate} must be divisible by "
+            f"{len(publishers)} withholding publishers")
+    adversarial_rate_each = (
+        cfg.adversarial_rate // len(publishers)
+        if idx in publishers and cfg.adversarial_rate
+        else 0
+    )
     ep = f"--entrypoint {entrypoint} " if entrypoint else ""
     # n=100 exceeds Docker's default 1024-file limit with full-mesh connections.
     return (f"docker run -d --name wanbench-node --restart no --network host "
             f"--ulimit nofile=65536:65536 "
             f"--cap-add NET_ADMIN -v /opt/wanbench:/wanbench "
             f"-e NODE_INDEX={idx} -e N_NODES={cfg.nodes} "
-            f"-e RATE={rate_each} -e TX_SIZE={cfg.tx_size} "
+            f"-e RATE={rate_each} -e ADVERSARIAL_RATE={adversarial_rate_each} "
+            f"-e TX_SIZE={cfg.tx_size} "
             f"-e METRICS_PORT={cfg.metrics_port} {env_extra} {ep}{cfg.image}")
 
 
@@ -143,7 +162,9 @@ class Vantage(ProtocolAdapter):
             "withhold_senders": 0,
             "withhold_publishers": [],
             "withhold_count": None,
+            "withhold_stride": 1,
             "withhold_receivers": [],
+            "withhold_repair": self.cfg.data_lane_drop_silent_repair,
             "withhold_headers": self.cfg.data_lane_drop_headers,
             "withhold_at_ms": None,
             "withhold_for_ms": 30_000,
@@ -172,6 +193,45 @@ class Vantage(ProtocolAdapter):
                     "data-lane drop could not map validator indices to public keys"
                 ) from exc
             parameters["withhold_count"] = len(receivers)
+        elif self.cfg.data_lane_drop_staggered_senders:
+            if pubkeys is None or len(pubkeys) != self.cfg.nodes:
+                raise ValueError(
+                    "staggered data-lane drop parameters require one generated "
+                    "public key per validator")
+            try:
+                committee_order = sorted(
+                    (entry["name"] for entry in pubkeys),
+                    key=base64.b64decode,
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    "staggered data-lane drop could not order generated public keys"
+                ) from exc
+            parameters["withhold_publishers"] = [
+                committee_order[
+                    (offset * self.cfg.data_lane_drop_publisher_stride)
+                    % self.cfg.nodes
+                ]
+                for offset in range(self.cfg.data_lane_drop_staggered_senders)
+            ]
+            parameters["withhold_count"] = self.cfg.data_lane_drop_staggered_width
+            parameters["withhold_stride"] = self.cfg.data_lane_drop_staggered_stride
+        selected = parameters["withhold_publishers"]
+        if selected:
+            if pubkeys is None:
+                raise ValueError("data-lane publisher resolution requires generated keys")
+            index_by_key = {
+                entry["name"]: index for index, entry in enumerate(pubkeys)
+            }
+            try:
+                self.cfg._data_lane_drop_runtime_publishers = [
+                    index_by_key[key] for key in selected
+                ]
+            except KeyError as exc:
+                raise ValueError(
+                    "data-lane publisher key is absent from the generated committee") from exc
+        else:
+            self.cfg._data_lane_drop_runtime_publishers = []
         return parameters
 
     ENTRYPOINT = "/usr/local/bin/wanbench-entrypoint.sh"

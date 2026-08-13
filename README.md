@@ -66,6 +66,14 @@ throughput decrease. `--no-early-stop` records the full ladder, and
 lower points strict. `--min-offered-throughput-pct` stops before the next point
 when committed throughput falls below the configured fraction of offered load.
 
+For the leader-relay experiment, a campaign may set
+`sweep_field: adversarial_rate`. In that mode `base.rate` remains the fixed,
+counted useful load, `correct_load_only: true` places it only on non-withholding
+authors, and the ladder scales uncounted payload on the withholding authors.
+Both streams traverse the normal protocol data path; only the useful stream is
+reported as committed goodput. See
+[`configs/n40-payload-drop-scaling.yaml`](configs/n40-payload-drop-scaling.yaml).
+
 ## Campaigns
 
 A campaign runs protocol variants sequentially. With `committee_sizes`, it

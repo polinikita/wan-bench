@@ -33,7 +33,8 @@ free -b 2>&1
 section disk
 df -B1 /opt/wanbench 2>&1
 section log-sizes
-wc -lc /opt/wanbench/logs/primary.log /opt/wanbench/logs/worker0.log /opt/wanbench/logs/client.log 2>&1
+wc -lc /opt/wanbench/logs/primary.log /opt/wanbench/logs/worker0.log \
+  /opt/wanbench/logs/client.log /opt/wanbench/logs/adversarial-client.log 2>&1
 section primary-log-events
 timeout 20 grep -Ei 'warn|error|panic|sequence (sync|install)|connection closed|failed to' /opt/wanbench/logs/primary.log 2>&1 | tail -n 5000
 section primary-log-head
@@ -46,6 +47,8 @@ section worker-log-tail
 tail -n 3000 /opt/wanbench/logs/worker0.log 2>&1
 section client-log-tail
 tail -n 1000 /opt/wanbench/logs/client.log 2>&1
+section adversarial-client-log-tail
+tail -n 1000 /opt/wanbench/logs/adversarial-client.log 2>&1
 section docker-log-tail
 timeout 20 docker logs --tail 1000 wanbench-node 2>&1
 """

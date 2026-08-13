@@ -1,3 +1,4 @@
+import base64
 import json
 import re
 import tempfile
@@ -240,6 +241,102 @@ class ProtocolTests(unittest.TestCase):
         cfg.data_lane_drop_headers = False
         self.assertFalse(Vantage(cfg).parameters(pubkeys)["withhold_headers"])
 
+    def test_staggered_data_lane_drop_selects_spread_committee_publishers(self):
+        cfg = RunConfig(
+            nodes=40,
+            rate=1_000,
+            image="image",
+            key_name="key",
+            data_lane_drop_staggered_senders=13,
+            data_lane_drop_staggered_width=13,
+            data_lane_drop_publisher_stride=3,
+            data_lane_drop_staggered_stride=13,
+            data_lane_drop_silent_repair=True,
+            data_lane_drop_headers=False,
+        )
+        cfg.validate()
+
+        pubkeys = [
+            {"name": base64.b64encode(bytes([index]) * 32).decode()}
+            for index in range(40)
+        ]
+        parameters = Vantage(cfg).parameters(pubkeys)
+
+        self.assertEqual(parameters["withhold_senders"], 0)
+        self.assertEqual(parameters["withhold_count"], 13)
+        self.assertEqual(parameters["withhold_stride"], 13)
+        self.assertTrue(parameters["withhold_repair"])
+        self.assertFalse(parameters["withhold_headers"])
+        self.assertEqual(
+            parameters["withhold_publishers"],
+            [pubkeys[(offset * 3) % 40]["name"] for offset in range(13)],
+        )
+        self.assertEqual(parameters["withhold_receivers"], [])
+        self.assertEqual(
+            cfg._data_lane_drop_runtime_publishers,
+            [(offset * 3) % 40 for offset in range(13)],
+        )
+        publisher_positions = set(cfg._data_lane_drop_runtime_publishers)
+        self.assertTrue(all(
+            (position + 1) % 40 not in publisher_positions
+            for position in publisher_positions
+        ))
+        missing_per_correct_leader = {
+            position: sum(
+                position in {
+                    (publisher + offset * 13) % 40
+                    for offset in range(1, 14)
+                }
+                for publisher in publisher_positions
+            )
+            for position in range(40)
+            if position not in publisher_positions
+        }
+        self.assertEqual(
+            sorted(missing_per_correct_leader.values()),
+            [4] * 18 + [5] * 9,
+        )
+
+    def test_leader_relay_workload_splits_useful_and_adversarial_rates_exactly(self):
+        cfg = RunConfig(
+            nodes=40,
+            rate=108_000,
+            adversarial_rate=52_000,
+            correct_load_only=True,
+            image="image",
+            key_name="key",
+            data_lane_drop_staggered_senders=13,
+            data_lane_drop_staggered_width=13,
+            data_lane_drop_publisher_stride=3,
+            data_lane_drop_staggered_stride=13,
+            data_lane_drop_silent_repair=True,
+            data_lane_drop_headers=False,
+        )
+        cfg.validate()
+        pubkeys = [
+            {"name": base64.b64encode(bytes([index]) * 32).decode()}
+            for index in range(40)
+        ]
+        Vantage(cfg).parameters(pubkeys)
+
+        commands = [_docker_prefix(cfg, index, "entrypoint") for index in range(40)]
+        useful = [int(re.search(r"-e RATE=(\d+)", command).group(1))
+                  for command in commands]
+        adversarial = [
+            int(re.search(r"-e ADVERSARIAL_RATE=(\d+)", command).group(1))
+            for command in commands
+        ]
+
+        self.assertEqual(sum(useful), 108_000)
+        self.assertEqual(sum(adversarial), 52_000)
+        publishers = set(cfg._data_lane_drop_runtime_publishers)
+        self.assertTrue(all(useful[index] == 0 for index in publishers))
+        self.assertTrue(all(adversarial[index] == 4_000 for index in publishers))
+        self.assertTrue(all(
+            useful[index] == 4_000 and adversarial[index] == 0
+            for index in range(40) if index not in publishers
+        ))
+
     def test_data_lane_drop_requires_valid_disjoint_index_sets(self):
         cases = (
             ([0], [], "must both be set"),
@@ -256,6 +353,58 @@ class ProtocolTests(unittest.TestCase):
                 data_lane_drop_publishers=publishers,
                 data_lane_drop_receivers=receivers,
             )
+            with self.subTest(error=error), self.assertRaisesRegex(ValueError, error):
+                cfg.validate()
+
+    def test_staggered_data_lane_drop_rejects_ambiguous_or_invalid_profiles(self):
+        cases = (
+            ({"data_lane_drop_staggered_senders": 13}, "must both be set"),
+            ({
+                "data_lane_drop_staggered_senders": 13,
+                "data_lane_drop_staggered_width": 13,
+                "data_lane_drop_staggered_stride": 2,
+            }, "coprime"),
+            ({
+                "data_lane_drop_staggered_senders": 13,
+                "data_lane_drop_staggered_width": 13,
+                "data_lane_drop_publisher_stride": 2,
+            }, "publisher stride.*coprime"),
+            ({"data_lane_drop_silent_repair": True}, "requires"),
+            ({
+                "data_lane_drop_publishers": [0],
+                "data_lane_drop_receivers": [1],
+                "data_lane_drop_staggered_senders": 13,
+                "data_lane_drop_staggered_width": 13,
+            }, "mutually exclusive"),
+        )
+        for fields, error in cases:
+            cfg = RunConfig(
+                nodes=40,
+                rate=1_000,
+                image="image",
+                key_name="key",
+                **fields,
+            )
+            with self.subTest(error=error), self.assertRaisesRegex(ValueError, error):
+                cfg.validate()
+
+    def test_leader_relay_workload_requires_exact_disjoint_load_shares(self):
+        common = {
+            "nodes": 40,
+            "image": "image",
+            "key_name": "key",
+            "correct_load_only": True,
+            "data_lane_drop_staggered_senders": 13,
+            "data_lane_drop_staggered_width": 13,
+            "data_lane_drop_publisher_stride": 3,
+            "data_lane_drop_staggered_stride": 13,
+        }
+        for fields, error in (
+            ({"rate": 100_000}, "27 load-bearing"),
+            ({"rate": 108_000, "adversarial_rate": 50_000},
+             "13 withholding"),
+        ):
+            cfg = RunConfig(**common, **fields)
             with self.subTest(error=error), self.assertRaisesRegex(ValueError, error):
                 cfg.validate()
 

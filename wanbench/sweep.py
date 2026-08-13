@@ -34,6 +34,7 @@ def _reset_nodes(ssh: Ssh, hosts: list[Host]) -> None:
 
 
 def sweep(cfg: RunConfig, rates: list[int], outdir: str,
+          sweep_field: str = "rate",
           warmup_s: int = WARMUP_S, window_s: int = WINDOW_S,
           drop_tolerance_pct: float = DROP_TOLERANCE_PCT,
           stop_on_drop: bool = True,
@@ -43,16 +44,31 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
           fleet: tuple[object, Ssh, list[Host], Host] | None = None) -> dict:
     if not rates:
         raise ValueError("sweep needs at least one rate")
-    if any(rate <= 0 for rate in rates):
-        raise ValueError(f"sweep rates must be positive, got {rates}")
+    if sweep_field not in ("rate", "adversarial_rate"):
+        raise ValueError("sweep field must be rate or adversarial_rate")
+    if any(type(rate) is not int or
+           (rate < 0 if sweep_field == "adversarial_rate" else rate <= 0)
+           for rate in rates):
+        qualifier = "non-negative" if sweep_field == "adversarial_rate" else "positive"
+        raise ValueError(f"sweep rates must be {qualifier} integers, got {rates}")
     if rates != sorted(rates) or len(set(rates)) != len(rates):
         raise ValueError(f"sweep rates must be strictly increasing, got {rates}")
-    invalid_rates = [rate for rate in rates
-                     if rate < cfg.nodes or rate % cfg.nodes]
+    publisher_count = (len(cfg.data_lane_drop_publishers)
+                       if cfg.data_lane_drop_publishers
+                       else cfg.data_lane_drop_staggered_senders)
+    useful_nodes = cfg.nodes - publisher_count if cfg.correct_load_only else cfg.nodes
+    if sweep_field == "rate":
+        invalid_rates = [rate for rate in rates
+                         if rate < useful_nodes or rate % useful_nodes]
+        denominator = useful_nodes
+    else:
+        invalid_rates = [rate for rate in rates
+                         if rate and (publisher_count == 0 or rate % publisher_count)]
+        denominator = publisher_count
     if invalid_rates:
         raise ValueError(
-            f"sweep rates must be >= and divisible by {cfg.nodes} nodes so the "
-            f"aggregate offered load is exact, got {invalid_rates}")
+            f"sweep {sweep_field} values must be exactly divisible by "
+            f"{denominator} load-bearing nodes, got {invalid_rates}")
     if warmup_s < 0:
         raise ValueError(f"sweep warmup must be >= 0, got {warmup_s}")
     if window_s <= 0:
@@ -83,6 +99,7 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                     "strict_through_rate": strict_through_rate,
                     "min_offered_throughput_pct": min_offered_throughput_pct,
                     "metric_labels": dict(metric_labels or {}),
+                    "sweep_field": sweep_field,
                     "rates": rates, "points": [], "stopped_early": False,
                     "stop_reason": None, "status": "running", "error": None,
                     "effective_config": None}
@@ -118,12 +135,14 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                     ssh, cfg, control, hosts)
             result["timeline"]["steps"] = [[n, round(s)] for n, s in log.steps]
             prev_tps: float | None = None
-            for point_index, rate in enumerate(rates, start=1):
+            for point_index, sweep_value in enumerate(rates, start=1):
                 point_start = time.monotonic()
-                cfg.rate = rate
-                strict_point = strict_through_rate is None or rate <= strict_through_rate
-                print(f"sweep: point offered={rate} tx/s "
-                      f"({rate // cfg.nodes}/node x {cfg.nodes}); "
+                setattr(cfg, sweep_field, sweep_value)
+                strict_point = (
+                    strict_through_rate is None or sweep_value <= strict_through_rate
+                )
+                print(f"sweep: point useful-offered={cfg.rate} tx/s; "
+                      f"{sweep_field}={sweep_value} tx/s; "
                       f"validation={'strict' if strict_point else 'exploratory'}")
                 # Renew orphan protection before each point.
                 prepare.arm_deadman(ssh, hosts + [control], cfg.deadman_minutes,
@@ -133,8 +152,9 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                 while True:
                     attempts_left -= 1
                     attempt += 1
-                    point_dir = (f"rate-{rate}" if attempt == 1
-                                 else f"rate-{rate}-attempt{attempt}")
+                    point_stem = f"{sweep_field.replace('_', '-')}-{sweep_value}"
+                    point_dir = (point_stem if attempt == 1
+                                 else f"{point_stem}-attempt{attempt}")
                     captured_failure = False
                     try:
                         _reset_nodes(ssh, hosts)
@@ -142,7 +162,8 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                             "wanbench_run": cfg.run_id,
                             "wanbench_protocol": cfg.protocol,
                             "wanbench_nodes": str(cfg.nodes),
-                            "wanbench_rate": str(rate),
+                            "wanbench_rate": str(cfg.rate),
+                            "wanbench_adversarial_rate": str(cfg.adversarial_rate),
                             **(metric_labels or {}),
                         }
                         targets = monitoring.validator_targets(cfg, hosts, labels)
@@ -195,38 +216,46 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                                                  str(out / point_dir), "failure")
                         if attempts_left <= 0:
                             raise
-                        print(f"sweep: point rate={rate:,} failed ({exc}); retrying "
+                        print(f"sweep: point {sweep_field}={sweep_value:,} failed "
+                              f"({exc}); retrying "
                               f"once with a full node reset", flush=True)
                 measure_s = timing.since(measure_start)
                 result["timeline"]["points"].append(
-                    {"rate": rate, "deploy_s": deploy_s, "measure_s": measure_s})
+                    {sweep_field: sweep_value, "rate": cfg.rate,
+                     "adversarial_rate": cfg.adversarial_rate,
+                     "deploy_s": deploy_s, "measure_s": measure_s})
                 summary["strict_validation"] = strict_point
+                summary["sweep_field"] = sweep_field
+                summary["sweep_value"] = sweep_value
+                summary["rate"] = cfg.rate
+                summary["adversarial_rate"] = cfg.adversarial_rate
                 result["points"].append(summary)
                 checkpoint()
                 tps = summary["tps_median"]
                 print(
                     f"sweep: point {point_index}/{len(rates)} completed in "
                     f"{timing.since(point_start)}s; attempts={attempt}; "
-                    f"offered={rate:,}, committed={tps:,.1f} tx/s",
+                    f"useful-offered={cfg.rate:,}, {sweep_field}={sweep_value:,}, "
+                    f"committed={tps:,.1f} tx/s",
                     flush=True,
                 )
                 if tps <= 0:
                     result["stopped_early"] = True
                     result["stop_reason"] = (
-                        f"no committed progress at offered load {rate} tx/s")
+                        f"no committed progress at {sweep_field}={sweep_value} tx/s")
                     checkpoint()
                     print(f"sweep: EARLY STOP -- {result['stop_reason']}")
                     break
                 below_offered = (
                     min_offered_throughput_pct is not None and
-                    tps < rate * min_offered_throughput_pct / 100
+                    tps < cfg.rate * min_offered_throughput_pct / 100
                 )
                 if below_offered:
                     result["stopped_early"] = True
                     result["stop_reason"] = (
                         f"committed {tps:.1f} tx/s is below "
                         f"{min_offered_throughput_pct:g}% of the offered "
-                        f"{rate} tx/s; overloaded")
+                        f"{cfg.rate} useful tx/s; overloaded")
                     checkpoint()
                     print(f"sweep: EARLY STOP -- {result['stop_reason']}")
                     break
@@ -236,8 +265,8 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                     result["stopped_early"] = True
                     result["stop_reason"] = (
                         f"committed TPS fell {prev_tps:.1f} -> {tps:.1f} "
-                        f"(more than {drop_tolerance_pct:g}%) when offered load rose "
-                        f"to {rate} tx/s; past saturation")
+                        f"(more than {drop_tolerance_pct:g}%) when {sweep_field} rose "
+                        f"to {sweep_value} tx/s; past saturation")
                     checkpoint()
                     print(f"sweep: EARLY STOP -- {result['stop_reason']}")
                     break
@@ -268,13 +297,14 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
 
     print(f"sweep: {len(result['points'])}/{len(rates)} points -> {out / 'sweep.json'}")
     for p in result["points"]:
-        print(f"  offered={p['rate']:>7} committed={p['tps_median']:>9.1f} tx/s "
+        print(f"  useful={p['rate']:>7} adversarial={p.get('adversarial_rate', 0):>7} "
+              f"committed={p['tps_median']:>9.1f} tx/s "
               f"p50_since_start={p['ordering_p50_ms_since_start']}ms "
               f"p90_since_start={p['ordering_p90_ms_since_start']}ms "
               f"cpu={p['cpu_pct_median']}%")
     print(log.summary())
     for pt in result["timeline"]["points"]:
-        print(f"  rate={pt['rate']:>7} deploy={pt['deploy_s']:>4}s "
+        print(f"  {sweep_field}={pt[sweep_field]:>7} deploy={pt['deploy_s']:>4}s "
               f"measure={pt['measure_s']:>4}s")
     print(f"sweep: teardown {result['timeline']['teardown_s']}s; "
           f"total {result['timeline']['total_s']}s")

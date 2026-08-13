@@ -41,6 +41,7 @@ def preflight(campaign: CampaignConfig,
         "instances": campaign.committee_sizes[-1] + 1,
         "instance_type": largest.instance_type or "auto",
         "az": largest.az or "auto-select one AZ",
+        "sweep_field": campaign.sweep_field,
         "rates": campaign.rates,
         "warmup_s": campaign.warmup_s,
         "window_s": campaign.window_s,
@@ -126,7 +127,8 @@ def _load_state(path: pathlib.Path, campaign: CampaignConfig,
 
 
 _COLUMNS = (
-    "nodes", "variant", "protocol", "rate", "tps_median", "tps_min",
+    "nodes", "variant", "protocol", "rate", "adversarial_rate",
+    "tps_median", "tps_min",
     "material_p50_ms_since_start", "material_p99_ms_since_start",
     "cpu_cores_p50", "wire_mb_per_s_p50", "bandwidth_efficiency_p50",
     "estimated_non_payload_bytes_per_tx_p50",
@@ -166,13 +168,14 @@ def _write_results(out: pathlib.Path, campaign: CampaignConfig,
         f"Committees: {', '.join(str(n) for n in campaign.committee_sizes)}. "
         f"Status: {state.get('status', 'unknown')}.",
         "",
-        "| n | variant | committed tx/s | p50 ms | CPU cores/node | "
+        "| n | variant | adversarial tx/s | committed tx/s | p50 ms | CPU cores/node | "
         "wire MB/s/node | wire B/sequenced B | non-payload B/tx |",
-        "|---:|---|---:|---:|---:|---:|---:|---:|",
+        "|---:|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in rows:
         lines.append(
             f"| {row['nodes']} | {row['variant']} | "
+            f"{_display(row.get('adversarial_rate'), 0)} | "
             f"{_display(row.get('tps_median'), 1)} | "
             f"{_display(row.get('material_p50_ms_since_start'), 1)} | "
             f"{_display(row.get('cpu_cores_p50'), 3)} | "
@@ -181,7 +184,9 @@ def _write_results(out: pathlib.Path, campaign: CampaignConfig,
             f"{_display(row.get('estimated_non_payload_bytes_per_tx_p50'), 1)} |"
         )
     if not rows:
-        lines.append("| -- | No completed points | -- | -- | -- | -- | -- | -- |")
+        lines.append(
+            "| -- | No completed points | -- | -- | -- | -- | -- | -- | -- |"
+        )
     lines += ["", "## Fleet status", ""]
     lines += [f"- n={nodes}: {status_by_nodes.get(nodes, 'pending')}"
               for nodes in campaign.committee_sizes]

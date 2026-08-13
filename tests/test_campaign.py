@@ -223,6 +223,11 @@ class DataLaneDropCampaignTests(unittest.TestCase):
         configs = campaign.configs()
 
         self.assertEqual(campaign.committee_sizes, [40])
+        self.assertEqual(campaign.sweep_field, "adversarial_rate")
+        self.assertEqual(
+            campaign.rates,
+            [0, 52_000, 104_000, 156_000, 208_000, 260_000, 312_000],
+        )
         self.assertEqual(
             [name for name, _cfg in configs],
             ["autobahn-optimistic-a2a", "vantage", "simpleit-optrbc"],
@@ -232,9 +237,17 @@ class DataLaneDropCampaignTests(unittest.TestCase):
             self.assertEqual(cfg.instance_type, "c5d.2xlarge")
             self.assertEqual((cfg.region, cfg.az), ("eu-west-1", "eu-west-1a"))
             self.assertEqual(cfg.wan.mode, "netem")
-            self.assertEqual(cfg.data_lane_drop_publishers, list(range(13)))
-            self.assertEqual(cfg.data_lane_drop_receivers, list(range(13, 26)))
+            self.assertEqual(cfg.data_lane_drop_publishers, [])
+            self.assertEqual(cfg.data_lane_drop_receivers, [])
+            self.assertEqual(cfg.data_lane_drop_staggered_senders, 13)
+            self.assertEqual(cfg.data_lane_drop_staggered_width, 13)
+            self.assertEqual(cfg.data_lane_drop_publisher_stride, 3)
+            self.assertEqual(cfg.data_lane_drop_staggered_stride, 13)
+            self.assertTrue(cfg.data_lane_drop_silent_repair)
             self.assertFalse(cfg.data_lane_drop_headers)
+            self.assertEqual(cfg.rate, 108_000)
+            self.assertEqual(cfg.adversarial_rate, 0)
+            self.assertTrue(cfg.correct_load_only)
             self.assertEqual(cfg.image_source, "registry")
             self.assertIn("@sha256:", cfg.image)
 

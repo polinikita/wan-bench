@@ -15,6 +15,7 @@ import yaml
 # Per-point table columns: JSON key, heading, and format.
 _COLUMNS: list[tuple[str, str, str]] = [
     ("rate", "offered tx/s", ",d"),
+    ("adversarial_rate", "adversarial tx/s", ",d"),
     ("tps_median", "committed tx/s (median)", ",.0f"),
     ("tps_min", "committed tx/s (min)", ",.0f"),
     # Materialised latency is the cross-protocol value.
@@ -72,7 +73,8 @@ def distill(data: dict, config_text: str) -> str:
     out += _provenance_lines(config_text) or ["- (config had no recognized fields)"]
     out += [
         f"- warmup / window: {data.get('warmup_s')} s / {data.get('window_s')} s per point",
-        f"- rate ladder: {', '.join(f'{r:,}' for r in data.get('rates', []))}",
+        f"- {data.get('sweep_field', 'rate')} ladder: "
+        f"{', '.join(f'{r:,}' for r in data.get('rates', []))}",
         f"- early-stop threshold: {data.get('drop_tolerance_pct')}% committed-TPS drop",
         "",
         "## Points",

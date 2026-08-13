@@ -469,7 +469,8 @@ def collect(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
 
     summary = {
         "run_id": cfg.run_id, "protocol": cfg.protocol, "nodes": cfg.nodes,
-        "rate": cfg.rate, "delta_ms": cfg.delta_ms, "fault": cfg.fault.kind,
+        "rate": cfg.rate, "adversarial_rate": cfg.adversarial_rate,
+        "delta_ms": cfg.delta_ms, "fault": cfg.fault.kind,
         "fault_nodes": sorted(cfg.fault.nodes) if cfg.fault.kind != "none" else [],
         # Crash cohort plus any counter-reset node; excluded from all medians.
         "excluded_nodes": reset_nodes,
