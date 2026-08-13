@@ -17,9 +17,9 @@ from .ssh import Host, Ssh
 CLIENT_ACTIVATION_MARGIN_MS = 5_000
 
 
-def _parameters(cfg: RunConfig) -> dict:
+def _parameters(cfg: RunConfig, pubkeys: list[dict] | None = None) -> dict:
     # Protocol adapters own their parameter schema.
-    params = adapter_for(cfg).parameters()
+    params = adapter_for(cfg).parameters(pubkeys)
     if params is None:
         raise ValueError(f"{cfg.protocol}: no parameters template (protocol mints "
                          f"its own; this deploy path should not be reached)")
@@ -97,7 +97,7 @@ def deploy(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
             cfg.client_activate_at_ms = None
             cfg.metrics_active_at_ms = None
 
-        ppath.write_text(json.dumps(_parameters(cfg), indent=2))
+        ppath.write_text(json.dumps(_parameters(cfg, pubkeys), indent=2))
         ssh.parallel(
             hosts,
             lambda h: ssh.scp(h, str(ppath), "/opt/wanbench/parameters.json"),

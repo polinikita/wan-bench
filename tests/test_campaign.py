@@ -195,6 +195,28 @@ class PaperThroughputCampaignTests(unittest.TestCase):
         self.assertTrue(configs[0][1].vantage_compact_ids)
 
 
+class DataLaneDropCampaignTests(unittest.TestCase):
+    def test_n100_manifest_matches_the_three_protocol_fault_matrix(self):
+        path = (Path(__file__).parents[1] / "configs" /
+                "n100-data-lane-drop-scaling.yaml")
+        campaign = CampaignConfig.load(str(path))
+        configs = campaign.configs()
+
+        self.assertEqual(campaign.committee_sizes, [100])
+        self.assertEqual(
+            [name for name, _cfg in configs],
+            ["autobahn-optimistic-a2a", "vantage", "simpleit-optrbc"],
+        )
+        self.assertTrue(configs[0][1].all_to_all)
+        for _name, cfg in configs:
+            self.assertEqual(cfg.instance_type, "c5d.2xlarge")
+            self.assertEqual((cfg.region, cfg.az), ("eu-west-1", "eu-west-1a"))
+            self.assertEqual(cfg.wan.mode, "netem")
+            self.assertEqual(cfg.data_lane_drop_publishers, list(range(33)))
+            self.assertEqual(cfg.data_lane_drop_receivers, list(range(33, 66)))
+            self.assertEqual(cfg.image_source, "build-on-control")
+
+
 class StarfishM5dGcCampaignTests(unittest.TestCase):
     def test_manifest_is_strict_and_uses_the_gc_image(self):
         path = (Path(__file__).parents[1] / "configs" /

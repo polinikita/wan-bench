@@ -40,7 +40,7 @@ class ProtocolAdapter(abc.ABC):
     def run_cmd(self, host: Host, hosts: list[Host]) -> str:
         """Return the container command for one node."""
 
-    def parameters(self) -> dict | None:
+    def parameters(self, pubkeys: list[dict] | None = None) -> dict | None:
         """Return parameters.json content, or None for generated parameters."""
         return None
 
@@ -90,9 +90,9 @@ class Vantage(ProtocolAdapter):
             }
         return {"authorities": authorities}
 
-    def parameters(self) -> dict:
+    def parameters(self, pubkeys: list[dict] | None = None) -> dict:
         # Complete config::Parameters document for the Vantage binary.
-        return {
+        parameters = {
             "timeout_delay": 1000,
             "header_size": 1000,
             "max_header_delay": self.cfg.max_header_delay_ms,
@@ -141,6 +141,9 @@ class Vantage(ProtocolAdapter):
             "batch_max_bytes": 65_536,
             "batch_max_delay_ms": 5,
             "withhold_senders": 0,
+            "withhold_publishers": [],
+            "withhold_count": None,
+            "withhold_receivers": [],
             "withhold_at_ms": None,
             "withhold_for_ms": 30_000,
             "resume_check_period_ms": 1000,
@@ -149,6 +152,26 @@ class Vantage(ProtocolAdapter):
             "reconnect_replay": True,
             "retry_backoff_max_ms": 2000,
         }
+        publishers = self.cfg.data_lane_drop_publishers
+        receivers = self.cfg.data_lane_drop_receivers
+        if publishers:
+            if pubkeys is None or len(pubkeys) != self.cfg.nodes:
+                raise ValueError(
+                    "data-lane drop parameters require one generated public key "
+                    "per validator")
+            try:
+                parameters["withhold_publishers"] = [
+                    pubkeys[index]["name"] for index in publishers
+                ]
+                parameters["withhold_receivers"] = [
+                    pubkeys[index]["name"] for index in receivers
+                ]
+            except (IndexError, KeyError, TypeError) as exc:
+                raise ValueError(
+                    "data-lane drop could not map validator indices to public keys"
+                ) from exc
+            parameters["withhold_count"] = len(receivers)
+        return parameters
 
     ENTRYPOINT = "/usr/local/bin/wanbench-entrypoint.sh"
 
@@ -173,8 +196,8 @@ class _VantageBinaryProtocol(Vantage):
 
     PROTOCOL: str = ""
 
-    def parameters(self) -> dict:
-        p = super().parameters()
+    def parameters(self, pubkeys: list[dict] | None = None) -> dict:
+        p = super().parameters(pubkeys)
         p["protocol"] = self.PROTOCOL
         return p
 
@@ -191,8 +214,8 @@ class AutobahnOptimistic(_VantageBinaryProtocol):
 class _SimpleIt(_VantageBinaryProtocol):
     RBC_DELAYS: tuple[int, int] = (0, 0)   # (d_s, d_t) from Table 3
 
-    def parameters(self) -> dict:
-        p = super().parameters()
+    def parameters(self, pubkeys: list[dict] | None = None) -> dict:
+        p = super().parameters(pubkeys)
         d_s, d_t = self.RBC_DELAYS
         p["timeout_delay"] = (d_s + d_t) * self.cfg.delta_ms
         return p

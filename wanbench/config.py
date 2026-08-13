@@ -114,6 +114,10 @@ class RunConfig:
     delta_ms: int = 200  # one-way delay bound; keep ~2x the WAN table's max one-way
     # Maximum wait before sealing a header.
     max_header_delay_ms: int = 100
+    # Permanent original data-lane omission profile. Entries are validator
+    # indices; repair and consensus-control traffic remain unaffected.
+    data_lane_drop_publishers: list[int] = field(default_factory=list)
+    data_lane_drop_receivers: list[int] = field(default_factory=list)
 
     # --- metrics-active window ---
     # Delay load until deployment and committee formation should be complete.
@@ -201,6 +205,32 @@ class RunConfig:
             raise ValueError("config: sequence_sync_chunk_outcomes must be >= 1")
         if self.sequence_sync_chunk_outcome_items < 1:
             raise ValueError("config: sequence_sync_chunk_outcome_items must be >= 1")
+        publishers = self.data_lane_drop_publishers
+        receivers = self.data_lane_drop_receivers
+        if bool(publishers) != bool(receivers):
+            raise ValueError(
+                "config: data-lane drop publishers and receivers must both be set")
+        for name, values in (
+            ("publishers", publishers),
+            ("receivers", receivers),
+        ):
+            if any(type(index) is not int for index in values):
+                raise ValueError(
+                    f"config: data-lane drop {name} must be validator indices")
+            if len(values) != len(set(values)):
+                raise ValueError(
+                    f"config: data-lane drop {name} contains duplicate indices")
+            invalid = sorted(index for index in values
+                             if index < 0 or index >= self.nodes)
+            if invalid:
+                raise ValueError(
+                    f"config: data-lane drop {name} indices out of range: {invalid}")
+        if set(publishers) & set(receivers):
+            raise ValueError(
+                "config: data-lane drop publishers and receivers must be disjoint")
+        if publishers and self.protocol == "starfish":
+            raise ValueError(
+                "config: data-lane drop is supported only by Vantage-binary protocols")
         if self.protocol == "vantage" and self.metrics_port != 6003:
             raise ValueError("config: vantage primary metrics_port is fixed at 6003")
         if self.protocol == "starfish" and self.nodes < 4:

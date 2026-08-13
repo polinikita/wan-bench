@@ -217,6 +217,44 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(parameters["sequence_sync_chunk_outcomes"], 64)
         self.assertEqual(parameters["sequence_sync_chunk_outcome_items"], 800)
 
+    def test_data_lane_drop_maps_validator_indices_to_explicit_keys(self):
+        cfg = RunConfig(
+            nodes=10,
+            rate=1_000,
+            image="image",
+            data_lane_drop_publishers=[0, 1, 2],
+            data_lane_drop_receivers=[3, 4, 5],
+        )
+        pubkeys = [{"name": f"key-{index}"} for index in range(10)]
+
+        parameters = Vantage(cfg).parameters(pubkeys)
+
+        self.assertEqual(parameters["withhold_senders"], 0)
+        self.assertEqual(
+            parameters["withhold_publishers"], ["key-0", "key-1", "key-2"])
+        self.assertEqual(
+            parameters["withhold_receivers"], ["key-3", "key-4", "key-5"])
+        self.assertEqual(parameters["withhold_count"], 3)
+
+    def test_data_lane_drop_requires_valid_disjoint_index_sets(self):
+        cases = (
+            ([0], [], "must both be set"),
+            ([0, 0], [1], "duplicate"),
+            ([0], [0], "disjoint"),
+            ([0], [10], "out of range"),
+        )
+        for publishers, receivers, error in cases:
+            cfg = RunConfig(
+                nodes=10,
+                rate=1_000,
+                image="image",
+                key_name="key",
+                data_lane_drop_publishers=publishers,
+                data_lane_drop_receivers=receivers,
+            )
+            with self.subTest(error=error), self.assertRaisesRegex(ValueError, error):
+                cfg.validate()
+
     def test_vantage_uses_echo_availability_claims_by_default(self):
         cfg = RunConfig(nodes=4, rate=400, image="image")
         self.assertTrue(Vantage(cfg).parameters()["echo_avail_claims"])
