@@ -118,6 +118,9 @@ class RunConfig:
     # indices; repair and consensus-control traffic remain unaffected.
     data_lane_drop_publishers: list[int] = field(default_factory=list)
     data_lane_drop_receivers: list[int] = field(default_factory=list)
+    # True drops original lane headers as well as worker batches. False keeps
+    # metadata visible and isolates the heavy-payload repair burden.
+    data_lane_drop_headers: bool = True
 
     # --- metrics-active window ---
     # Delay load until deployment and committee formation should be complete.
@@ -231,6 +234,8 @@ class RunConfig:
         if publishers and self.protocol == "starfish":
             raise ValueError(
                 "config: data-lane drop is supported only by Vantage-binary protocols")
+        if type(self.data_lane_drop_headers) is not bool:
+            raise ValueError("config: data_lane_drop_headers must be boolean")
         if self.protocol == "vantage" and self.metrics_port != 6003:
             raise ValueError("config: vantage primary metrics_port is fixed at 6003")
         if self.protocol == "starfish" and self.nodes < 4:

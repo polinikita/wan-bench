@@ -144,6 +144,7 @@ class Vantage(ProtocolAdapter):
             "withhold_publishers": [],
             "withhold_count": None,
             "withhold_receivers": [],
+            "withhold_headers": self.cfg.data_lane_drop_headers,
             "withhold_at_ms": None,
             "withhold_for_ms": 30_000,
             "resume_check_period_ms": 1000,

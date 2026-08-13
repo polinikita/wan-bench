@@ -235,6 +235,10 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(
             parameters["withhold_receivers"], ["key-3", "key-4", "key-5"])
         self.assertEqual(parameters["withhold_count"], 3)
+        self.assertTrue(parameters["withhold_headers"])
+
+        cfg.data_lane_drop_headers = False
+        self.assertFalse(Vantage(cfg).parameters(pubkeys)["withhold_headers"])
 
     def test_data_lane_drop_requires_valid_disjoint_index_sets(self):
         cases = (

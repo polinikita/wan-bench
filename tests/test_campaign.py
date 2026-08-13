@@ -216,6 +216,28 @@ class DataLaneDropCampaignTests(unittest.TestCase):
             self.assertEqual(cfg.data_lane_drop_receivers, list(range(33, 66)))
             self.assertEqual(cfg.image_source, "build-on-control")
 
+    def test_n40_payload_only_manifest_is_the_local_gated_three_protocol_study(self):
+        path = (Path(__file__).parents[1] / "configs" /
+                "n40-payload-drop-scaling.yaml")
+        campaign = CampaignConfig.load(str(path))
+        configs = campaign.configs()
+
+        self.assertEqual(campaign.committee_sizes, [40])
+        self.assertEqual(
+            [name for name, _cfg in configs],
+            ["autobahn-optimistic-a2a", "vantage", "simpleit-optrbc"],
+        )
+        self.assertTrue(configs[0][1].all_to_all)
+        for _name, cfg in configs:
+            self.assertEqual(cfg.instance_type, "c5d.2xlarge")
+            self.assertEqual((cfg.region, cfg.az), ("eu-west-1", "eu-west-1a"))
+            self.assertEqual(cfg.wan.mode, "netem")
+            self.assertEqual(cfg.data_lane_drop_publishers, list(range(13)))
+            self.assertEqual(cfg.data_lane_drop_receivers, list(range(13, 26)))
+            self.assertFalse(cfg.data_lane_drop_headers)
+            self.assertEqual(cfg.image_source, "registry")
+            self.assertIn("@sha256:", cfg.image)
+
 
 class StarfishM5dGcCampaignTests(unittest.TestCase):
     def test_manifest_is_strict_and_uses_the_gc_image(self):
