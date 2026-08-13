@@ -124,7 +124,16 @@ def _build_and_push(ssh: Ssh, cfg: RunConfig, control: Host, ref: str) -> None:
     with tempfile.NamedTemporaryFile(suffix=".tar", delete=False) as tf:
         subprocess.run(["git", "-C", str(repo), "archive", "--format=tar",
                         "-o", tf.name, "HEAD"], check=True)
-        ssh.run(control, "rm -rf /opt/wanbench-src && mkdir -p /opt/wanbench-src")
+        # `/opt` is root-owned even when `/opt/wanbench` is an instance-store
+        # mount owned by the SSH user. Create the sibling staging directory as
+        # root, then transfer its ownership to the same uid/gid as the mount.
+        ssh.sudo(
+            control,
+            "rm -rf /opt/wanbench-src && "
+            "install -d "
+            "-o \"$(stat -c %u /opt/wanbench)\" "
+            "-g \"$(stat -c %g /opt/wanbench)\" /opt/wanbench-src",
+        )
         ssh.scp(control, tf.name, "/opt/wanbench-src/src.tar")
     # Protocol Dockerfiles require BuildKit.
     ssh.sudo(control,

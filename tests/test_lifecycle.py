@@ -107,6 +107,29 @@ class ImagePinningTests(unittest.TestCase):
             ref, digest = images.pin_to_digest("10.0.0.9:5000/vantage-node:dev")
         self.assertEqual((ref, digest), ("10.0.0.9:5000/vantage-node:dev", None))
 
+    def test_source_build_staging_is_created_with_the_mount_owner(self):
+        import wanbench.images as images
+        cfg = RunConfig(
+            nodes=1,
+            rate=100,
+            image="vantage-node:test",
+            image_source="build-on-control",
+            build_repo=".",
+            build_dockerfile="docker-bench/Dockerfile",
+        )
+        control = Host(1, "i-control", "public", "10.0.0.2")
+        ssh = MagicMock()
+
+        with patch.object(images.subprocess, "run"):
+            images._build_and_push(
+                ssh, cfg, control, "10.0.0.2:5000/vantage-node:test")
+
+        staging = ssh.sudo.call_args_list[0].args[1]
+        self.assertIn("install -d", staging)
+        self.assertIn("stat -c %u /opt/wanbench", staging)
+        self.assertIn("stat -c %g /opt/wanbench", staging)
+        ssh.scp.assert_called_once()
+
 class SingleAzTests(unittest.TestCase):
     """Tests for single-AZ fleet enforcement."""
 
