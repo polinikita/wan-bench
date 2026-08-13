@@ -25,7 +25,7 @@ base:
   grafana_open_cidr: null
   deadman_minutes: 60
 
-  image: ghcr.io/polinikita/vantage-node@sha256:8d3b41f019d19538d2daad17535624f8949c4d1aa026662628d31c5b806d3f74
+  image: ghcr.io/polinikita/vantage-node@sha256:b54b8a8aa46b8b2c1b1d48ec1f6289e752413c89bed6fc2b9acf393730613d8a
   image_source: registry
 
   tx_size: 512
