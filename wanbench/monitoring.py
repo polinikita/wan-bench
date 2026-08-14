@@ -347,7 +347,7 @@ def _archive_compose_yml() -> str:
       - >-
         find /data -mindepth 1 -maxdepth 1 -exec rm -rf {} +;
         for archive in /bundle/prometheus-tsdb*.tar.gz; do
-          tar -xzf "$archive" --strip-components=1 -C /data;
+          tar -xzf "$$archive" --strip-components=1 -C /data;
         done;
         chmod -R a+rwX /data
     volumes:

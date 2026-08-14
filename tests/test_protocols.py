@@ -120,6 +120,7 @@ class ProtocolTests(unittest.TestCase):
             self.assertTrue((bundle / "README.md").is_file())
             compose = (bundle / "compose.yaml").read_text()
             self.assertIn("--config.file=/etc/prometheus/prometheus.yml", compose)
+            self.assertIn('tar -xzf "$$archive"', compose)
             datasource = (bundle / "provisioning" / "datasources" /
                           "prometheus.yml").read_text()
             self.assertIn("http://prometheus:9090", datasource)
