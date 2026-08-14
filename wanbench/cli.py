@@ -95,7 +95,7 @@ def main(argv=None) -> int:
                     help="use exploratory validation above this aggregate rate")
     sp.add_argument("--min-offered-throughput-pct", type=float, default=None,
                     help="stop when committed throughput falls below this percentage "
-                         "of offered load")
+                         "of reachable offered load")
     sp.add_argument("--no-state-sync", action="store_true",
                     help="disable Vantage sequence checkpoint state sync for this sweep")
 

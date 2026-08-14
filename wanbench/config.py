@@ -170,6 +170,34 @@ class RunConfig:
         """Return the deployment delay before clients submit."""
         return self.spam_initial_delay_ms + self.spam_delay_per_node_ms * self.nodes
 
+    def permanently_unavailable_publisher_count(self) -> int:
+        """Return authors whose counted payload cannot reach non-publishers.
+
+        This is deliberately conservative.  Only an explicit fixed profile can
+        establish that every non-publisher is omitted, and repair refusal makes
+        that omission permanent.  Staggered profiles may leave different honest
+        holders for every lane, so the harness does not infer a throughput ceiling
+        for them.
+        """
+        publishers = set(self.data_lane_drop_publishers)
+        receivers = set(self.data_lane_drop_receivers)
+        if (not self.data_lane_drop_silent_repair or not publishers or
+                publishers | receivers != set(range(self.nodes))):
+            return 0
+        return len(publishers)
+
+    def reachable_rate(self) -> int:
+        """Return counted offered tx/s that honest validators can materialize."""
+        if self.correct_load_only:
+            return self.rate
+        available_authors = self.nodes - self.permanently_unavailable_publisher_count()
+        # Validation makes rate exactly divisible by all load-bearing validators.
+        return self.rate * available_authors // self.nodes
+
+    def reachable_fraction(self) -> float:
+        """Return the reachable share of the counted aggregate workload."""
+        return self.reachable_rate() / self.rate
+
     @classmethod
     def from_dict(cls, data: dict) -> "RunConfig":
         raw = copy.deepcopy(data)

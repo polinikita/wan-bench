@@ -224,11 +224,15 @@ def check_progress_quality(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[
     ]
     median_rate = statistics.median(rate for _, rate in rates) if rates else 0.0
     slowest_node, min_rate = min(rates, key=lambda item: item[1], default=(-1, 0.0))
-    # Every node commits the aggregate replicated stream.
-    floor = cfg.rate * min_rate_pct / 100.0
+    # Every node commits the aggregate replicated stream, except payload authored
+    # by an explicitly isolated fixed Byzantine cohort.  Those transactions are
+    # unreachable by construction and are not a progress-quality failure.
+    reachable_rate = cfg.reachable_rate()
+    floor = reachable_rate * min_rate_pct / 100.0
     print(f"progress: committed rate median {median_rate:,.0f}, "
           f"min {min_rate:,.0f} (node {slowest_node}) tx/s over {window:.0f}s "
-          f"(floor {floor:,.0f} = {min_rate_pct:.0f}% of {cfg.rate:,} offered)", flush=True)
+          f"(floor {floor:,.0f} = {min_rate_pct:.0f}% of "
+          f"{reachable_rate:,} reachable from {cfg.rate:,} offered)", flush=True)
 
     starts = [
         (h.index, min(values))
@@ -259,8 +263,9 @@ def check_progress_quality(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[
         slow = [index for index, rate in rates if rate < floor]
         message = (
             f"node(s) {slow} passed the barrier but commit below "
-            f"{min_rate_pct:.0f}% of the offered {cfg.rate:,} tx/s "
-            f"(slowest {min_rate:,.0f} tx/s on node {slowest_node})")
+            f"{min_rate_pct:.0f}% of the reachable {reachable_rate:,} tx/s "
+            f"({cfg.rate:,} total offered; slowest {min_rate:,.0f} tx/s "
+            f"on node {slowest_node})")
         if enforce_rate_and_lag:
             raise RuntimeError(message)
         print(f"progress: WARNING {message}", flush=True)
@@ -467,9 +472,13 @@ def collect(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
         return sum(set(_metrics_ports(cfg, host)) <= _successful_ports(snapshot[host.index])
                    for host in hosts)
 
+    reachable_rate = cfg.reachable_rate()
     summary = {
         "run_id": cfg.run_id, "protocol": cfg.protocol, "nodes": cfg.nodes,
         "rate": cfg.rate, "adversarial_rate": cfg.adversarial_rate,
+        "reachable_rate": reachable_rate,
+        "unreachable_rate": cfg.rate - reachable_rate,
+        "reachable_throughput_pct": round(100.0 * tps / reachable_rate, 1),
         "delta_ms": cfg.delta_ms, "fault": cfg.fault.kind,
         "fault_nodes": sorted(cfg.fault.nodes) if cfg.fault.kind != "none" else [],
         # Crash cohort plus any counter-reset node; excluded from all medians.

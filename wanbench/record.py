@@ -15,6 +15,8 @@ import yaml
 # Per-point table columns: JSON key, heading, and format.
 _COLUMNS: list[tuple[str, str, str]] = [
     ("rate", "offered tx/s", ",d"),
+    ("reachable_rate", "reachable tx/s", ",d"),
+    ("reachable_throughput_pct", "% reachable", ".1f"),
     ("adversarial_rate", "adversarial tx/s", ",d"),
     ("tps_median", "committed tx/s (median)", ",.0f"),
     ("tps_min", "committed tx/s (min)", ",.0f"),
@@ -190,6 +192,7 @@ def _campaign_rows(campaign: dict, source: pathlib.Path) -> tuple[list[dict], li
 def _write_campaign_points(out: pathlib.Path, rows: list[dict]) -> None:
     columns = [
         "variant", "protocol", "variant_status", "overloaded", "rate",
+        "reachable_rate", "unreachable_rate", "reachable_throughput_pct",
         "tps_median", "tps_min", "material_p50_ms_since_start",
         "material_p90_ms_since_start", "material_p99_ms_since_start",
         "cpu_cores_p50", "rss_mb_median", "wire_mb_per_s_p50",
@@ -214,16 +217,19 @@ def _campaign_readme(campaign: dict, rows: list[dict]) -> str:
         f"Started {campaign.get('started_at', 'unknown')}; "
         f"finished {campaign.get('finished_at', 'unknown')}.",
         "",
-        "| variant | offered tx/s | committed tx/s | p50 ms | p99 ms | "
+        "| variant | offered tx/s | reachable tx/s | committed tx/s | % reachable | "
+        "p50 ms | p99 ms | "
         "CPU cores/node | RSS MB/node | wire MB/s/node | healthy | outcome |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     nodes = next((row.get("nodes") for row in rows if row.get("nodes")), "?")
     for row in rows:
         outcome = "overloaded" if row["overloaded"] else "accepted"
         lines.append(
             f"| {row['variant']} | {_fmt(row.get('rate'), ',d')} | "
+            f"{_fmt(row.get('reachable_rate'), ',d')} | "
             f"{_fmt(row.get('tps_median'), ',.1f')} | "
+            f"{_fmt(row.get('reachable_throughput_pct'), '.1f')} | "
             f"{_fmt(row.get('material_p50_ms_since_start'), '.1f')} | "
             f"{_fmt(row.get('material_p99_ms_since_start'), '.1f')} | "
             f"{_fmt(row.get('cpu_cores_p50'), '.3f')} | "

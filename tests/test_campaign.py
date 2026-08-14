@@ -213,7 +213,11 @@ class DataLaneDropCampaignTests(unittest.TestCase):
             self.assertEqual((cfg.region, cfg.az), ("eu-west-1", "eu-west-1a"))
             self.assertEqual(cfg.wan.mode, "netem")
             self.assertEqual(cfg.data_lane_drop_publishers, list(range(33)))
-            self.assertEqual(cfg.data_lane_drop_receivers, list(range(33, 66)))
+            self.assertEqual(cfg.data_lane_drop_receivers, list(range(33, 100)))
+            self.assertTrue(cfg.data_lane_drop_silent_repair)
+            self.assertTrue(cfg.data_lane_drop_headers)
+            self.assertEqual(cfg.permanently_unavailable_publisher_count(), 33)
+            self.assertEqual(cfg.reachable_rate(), 67)
             self.assertEqual(cfg.image_source, "build-on-control")
 
     def test_n40_payload_only_manifest_is_the_local_gated_three_protocol_study(self):

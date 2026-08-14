@@ -141,7 +141,9 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                 strict_point = (
                     strict_through_rate is None or sweep_value <= strict_through_rate
                 )
-                print(f"sweep: point useful-offered={cfg.rate} tx/s; "
+                reachable_rate = cfg.reachable_rate()
+                print(f"sweep: point offered={cfg.rate} tx/s; "
+                      f"reachable={reachable_rate} tx/s; "
                       f"{sweep_field}={sweep_value} tx/s; "
                       f"validation={'strict' if strict_point else 'exploratory'}")
                 # Renew orphan protection before each point.
@@ -163,6 +165,7 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                             "wanbench_protocol": cfg.protocol,
                             "wanbench_nodes": str(cfg.nodes),
                             "wanbench_rate": str(cfg.rate),
+                            "wanbench_reachable_rate": str(reachable_rate),
                             "wanbench_adversarial_rate": str(cfg.adversarial_rate),
                             **(metric_labels or {}),
                         }
@@ -222,20 +225,27 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                 measure_s = timing.since(measure_start)
                 result["timeline"]["points"].append(
                     {sweep_field: sweep_value, "rate": cfg.rate,
+                     "reachable_rate": reachable_rate,
                      "adversarial_rate": cfg.adversarial_rate,
                      "deploy_s": deploy_s, "measure_s": measure_s})
                 summary["strict_validation"] = strict_point
                 summary["sweep_field"] = sweep_field
                 summary["sweep_value"] = sweep_value
                 summary["rate"] = cfg.rate
+                summary["reachable_rate"] = reachable_rate
+                summary["unreachable_rate"] = cfg.rate - reachable_rate
                 summary["adversarial_rate"] = cfg.adversarial_rate
+                tps = summary["tps_median"]
+                summary["reachable_throughput_pct"] = (
+                    round(100.0 * tps / reachable_rate, 1)
+                )
                 result["points"].append(summary)
                 checkpoint()
-                tps = summary["tps_median"]
                 print(
                     f"sweep: point {point_index}/{len(rates)} completed in "
                     f"{timing.since(point_start)}s; attempts={attempt}; "
-                    f"useful-offered={cfg.rate:,}, {sweep_field}={sweep_value:,}, "
+                    f"offered={cfg.rate:,}, reachable={reachable_rate:,}, "
+                    f"{sweep_field}={sweep_value:,}, "
                     f"committed={tps:,.1f} tx/s",
                     flush=True,
                 )
@@ -248,14 +258,14 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                     break
                 below_offered = (
                     min_offered_throughput_pct is not None and
-                    tps < cfg.rate * min_offered_throughput_pct / 100
+                    tps < reachable_rate * min_offered_throughput_pct / 100
                 )
                 if below_offered:
                     result["stopped_early"] = True
                     result["stop_reason"] = (
                         f"committed {tps:.1f} tx/s is below "
-                        f"{min_offered_throughput_pct:g}% of the offered "
-                        f"{cfg.rate} useful tx/s; overloaded")
+                        f"{min_offered_throughput_pct:g}% of the reachable "
+                        f"{reachable_rate} tx/s ({cfg.rate} total offered); overloaded")
                     checkpoint()
                     print(f"sweep: EARLY STOP -- {result['stop_reason']}")
                     break
@@ -297,7 +307,8 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
 
     print(f"sweep: {len(result['points'])}/{len(rates)} points -> {out / 'sweep.json'}")
     for p in result["points"]:
-        print(f"  useful={p['rate']:>7} adversarial={p.get('adversarial_rate', 0):>7} "
+        print(f"  offered={p['rate']:>7} reachable={p['reachable_rate']:>7} "
+              f"adversarial={p.get('adversarial_rate', 0):>7} "
               f"committed={p['tps_median']:>9.1f} tx/s "
               f"p50_since_start={p['ordering_p50_ms_since_start']}ms "
               f"p90_since_start={p['ordering_p90_ms_since_start']}ms "

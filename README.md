@@ -64,7 +64,11 @@ validator count. A sweep retries one failed point and stops after a material
 throughput decrease. `--no-early-stop` records the full ladder, and
 `--strict-through-rate` permits congestion above a specified load while keeping
 lower points strict. `--min-offered-throughput-pct` stops before the next point
-when committed throughput falls below the configured fraction of offered load.
+when committed throughput falls below the configured fraction of reachable load.
+Normally reachable and offered load are identical. For an explicit fixed
+Byzantine lane profile that omits every non-publisher and refuses repair, the
+harness records the isolated authors' share as unreachable instead of treating
+its expected absence as overload.
 
 For the leader-relay experiment, a campaign may set
 `sweep_field: adversarial_rate`. In that mode `base.rate` remains the fixed,
@@ -73,6 +77,18 @@ authors, and the ladder scales uncounted payload on the withholding authors.
 Both streams traverse the normal protocol data path; only the useful stream is
 reported as committed goodput. See
 [`configs/n40-payload-drop-scaling.yaml`](configs/n40-payload-drop-scaling.yaml).
+
+The prepared `n=100` Byzantine-lane campaign compares Autobahn optimistic
+all-to-all, Vantage, and Simple-IT Opt-RBC. Its 33 Byzantine authors publish
+lane data only inside their cohort and refuse certificate, header, and batch
+repair to all 67 other validators, while consensus traffic stays live. It uses
+private validator addresses, `c5d.2xlarge` instances, and the ten-region RTT
+matrix through `tc netem`:
+
+```bash
+wanbench campaign --config configs/n100-data-lane-drop-scaling.yaml
+wanbench campaign --config configs/n100-data-lane-drop-scaling.yaml --execute
+```
 
 ## Campaigns
 
@@ -187,8 +203,8 @@ an importable Grafana dashboard and a local Compose viewer:
 docker compose -f results/example/monitoring/compose.yaml up
 ```
 
-Archived series include stable run, variant, protocol, committee-size, and
-offered-rate labels.
+Archived series include stable run, variant, protocol, committee-size, offered-
+rate, and reachable-rate labels.
 
 `bandwidth_efficiency_p50` is the median validator's outbound wire bytes divided
 by its sequenced transaction bytes, matching the Bluestreak committee-scaling

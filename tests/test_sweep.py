@@ -41,11 +41,16 @@ class SweepTests(unittest.TestCase):
         self.assertEqual(self.check_progress_quality.call_count, 2,
                          "the point should be retried once, then abort")
 
-    def run_sweep(self, values, protocol="vantage", seen_strict=None, **sweep_kwargs):
-        nodes = 4 if protocol == "starfish" else 2
+    def run_sweep(self, values, protocol="vantage", seen_strict=None,
+                  config=None, **sweep_kwargs):
+        cfg = config
+        if cfg is None:
+            nodes = 4 if protocol == "starfish" else 2
+            cfg = RunConfig(protocol=protocol, nodes=nodes, rate=100, image="image")
+        else:
+            nodes = cfg.nodes
         hosts = [Host(i, f"i-{i}", f"public-{i}", f"10.0.0.{i + 1}")
                  for i in range(nodes)]
-        cfg = RunConfig(protocol=protocol, nodes=nodes, rate=100, image="image")
         rates = [item[0] for item in values]
         points = iter(summary(*item) for item in values)
         def collect_point(*_args, **kwargs):
@@ -131,7 +136,7 @@ class SweepTests(unittest.TestCase):
         )
         self.assertEqual(len(result["points"]), 1)
         self.assertTrue(result["stopped_early"])
-        self.assertIn("below 95% of the offered 100", result["stop_reason"])
+        self.assertIn("below 95% of the reachable 100", result["stop_reason"])
         self.assertEqual(persisted["min_offered_throughput_pct"], 95)
 
     def test_offered_floor_accepts_the_boundary(self):
@@ -141,6 +146,41 @@ class SweepTests(unittest.TestCase):
         )
         self.assertEqual(len(result["points"]), 2)
         self.assertFalse(result["stopped_early"])
+
+    def test_byzantine_unreachable_share_uses_the_reachable_floor(self):
+        cfg = RunConfig(
+            nodes=10,
+            rate=1_000,
+            image="image",
+            data_lane_drop_publishers=[0, 1, 2],
+            data_lane_drop_receivers=list(range(3, 10)),
+            data_lane_drop_silent_repair=True,
+        )
+        result, persisted, _ = self.run_sweep(
+            [(1_000, 665.0), (2_000, 1_330.0)],
+            config=cfg,
+            min_offered_throughput_pct=95,
+        )
+
+        self.assertFalse(result["stopped_early"])
+        self.assertEqual(
+            [point["reachable_rate"] for point in result["points"]],
+            [700, 1_400],
+        )
+        self.assertEqual(
+            [point["unreachable_rate"] for point in result["points"]],
+            [300, 600],
+        )
+        self.assertEqual(
+            [point["reachable_throughput_pct"] for point in result["points"]],
+            [95.0, 95.0],
+        )
+        self.assertEqual(persisted["points"][0]["reachable_rate"], 700)
+        labels = [call.args[3][0][1] for call in self.last_configure_targets.call_args_list]
+        self.assertEqual(
+            [label["wanbench_reachable_rate"] for label in labels],
+            ["700", "1400"],
+        )
 
     def test_zero_progress_stops_immediately(self):
         result, _, _ = self.run_sweep([(100, 0.0), (200, 100.0)])
@@ -193,7 +233,7 @@ class SweepTests(unittest.TestCase):
         self.assertRegex(
             output.getvalue(),
             r"sweep: point 1/1 completed in \d+s; attempts=1; "
-            r"useful-offered=100, rate=100, committed=99\.5 tx/s",
+            r"offered=100, reachable=100, rate=100, committed=99\.5 tx/s",
         )
 
     def test_adversarial_sweep_keeps_useful_rate_fixed(self):

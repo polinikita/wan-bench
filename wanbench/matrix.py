@@ -127,7 +127,8 @@ def _load_state(path: pathlib.Path, campaign: CampaignConfig,
 
 
 _COLUMNS = (
-    "nodes", "variant", "protocol", "rate", "adversarial_rate",
+    "nodes", "variant", "protocol", "rate", "reachable_rate",
+    "unreachable_rate", "reachable_throughput_pct", "adversarial_rate",
     "tps_median", "tps_min",
     "material_p50_ms_since_start", "material_p99_ms_since_start",
     "cpu_cores_p50", "wire_mb_per_s_p50", "bandwidth_efficiency_p50",
@@ -168,15 +169,19 @@ def _write_results(out: pathlib.Path, campaign: CampaignConfig,
         f"Committees: {', '.join(str(n) for n in campaign.committee_sizes)}. "
         f"Status: {state.get('status', 'unknown')}.",
         "",
-        "| n | variant | adversarial tx/s | committed tx/s | p50 ms | CPU cores/node | "
+        "| n | variant | offered tx/s | reachable tx/s | adversarial tx/s | "
+        "committed tx/s | % reachable | p50 ms | CPU cores/node | "
         "wire MB/s/node | wire B/sequenced B | non-payload B/tx |",
-        "|---:|---|---:|---:|---:|---:|---:|---:|---:|",
+        "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in rows:
         lines.append(
             f"| {row['nodes']} | {row['variant']} | "
+            f"{_display(row.get('rate'), 0)} | "
+            f"{_display(row.get('reachable_rate'), 0)} | "
             f"{_display(row.get('adversarial_rate'), 0)} | "
             f"{_display(row.get('tps_median'), 1)} | "
+            f"{_display(row.get('reachable_throughput_pct'), 1)} | "
             f"{_display(row.get('material_p50_ms_since_start'), 1)} | "
             f"{_display(row.get('cpu_cores_p50'), 3)} | "
             f"{_display(row.get('wire_mb_per_s_p50'), 3)} | "
@@ -185,7 +190,7 @@ def _write_results(out: pathlib.Path, campaign: CampaignConfig,
         )
     if not rows:
         lines.append(
-            "| -- | No completed points | -- | -- | -- | -- | -- | -- | -- |"
+            "| -- | No completed points | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |"
         )
     lines += ["", "## Fleet status", ""]
     lines += [f"- n={nodes}: {status_by_nodes.get(nodes, 'pending')}"

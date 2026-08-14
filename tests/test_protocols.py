@@ -226,6 +226,7 @@ class ProtocolTests(unittest.TestCase):
             image="image",
             data_lane_drop_publishers=[0, 1, 2],
             data_lane_drop_receivers=[3, 4, 5],
+            data_lane_drop_silent_repair=True,
         )
         pubkeys = [{"name": f"key-{index}"} for index in range(10)]
 
@@ -237,10 +238,34 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(
             parameters["withhold_receivers"], ["key-3", "key-4", "key-5"])
         self.assertEqual(parameters["withhold_count"], 3)
+        self.assertTrue(parameters["withhold_repair"])
         self.assertTrue(parameters["withhold_headers"])
 
         cfg.data_lane_drop_headers = False
         self.assertFalse(Vantage(cfg).parameters(pubkeys)["withhold_headers"])
+
+    def test_fixed_silent_cohort_reports_the_reachable_rate(self):
+        cfg = RunConfig(
+            nodes=10,
+            rate=1_000,
+            image="image",
+            data_lane_drop_publishers=[0, 1, 2],
+            data_lane_drop_receivers=list(range(3, 10)),
+            data_lane_drop_silent_repair=True,
+        )
+
+        self.assertEqual(cfg.permanently_unavailable_publisher_count(), 3)
+        self.assertEqual(cfg.reachable_rate(), 700)
+        self.assertEqual(cfg.reachable_fraction(), 0.7)
+
+        cfg.data_lane_drop_silent_repair = False
+        self.assertEqual(cfg.permanently_unavailable_publisher_count(), 0)
+        self.assertEqual(cfg.reachable_rate(), 1_000)
+
+        cfg.data_lane_drop_silent_repair = True
+        cfg.data_lane_drop_receivers = list(range(3, 9))
+        self.assertEqual(cfg.permanently_unavailable_publisher_count(), 0)
+        self.assertEqual(cfg.reachable_rate(), 1_000)
 
     def test_staggered_data_lane_drop_selects_spread_committee_publishers(self):
         cfg = RunConfig(

@@ -335,7 +335,7 @@ def print_plan(report: dict) -> None:
     print(f"early stop: {'on' if report['stop_on_drop'] else 'off'}")
     floor = report["min_offered_throughput_pct"]
     if floor is not None:
-        print(f"overload stop: committed throughput below {floor:g}% of offered")
+        print(f"overload stop: committed throughput below {floor:g}% of reachable load")
     print(f"minimum fleet usage: {report['minimum_instance_hours']:.1f} instance-hours")
     quota = report.get("quota")
     if quota and quota["available_vcpus"] is None:

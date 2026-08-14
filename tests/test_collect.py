@@ -52,6 +52,9 @@ class CollectTests(unittest.TestCase):
                              baseline_at=0, final_at=10, strict=True)
             raw = (Path(tmp) / "summary.json").read_text()
         self.assertEqual(result["tps_median"], 100.0)
+        self.assertEqual(result["reachable_rate"], 100)
+        self.assertEqual(result["unreachable_rate"], 0)
+        self.assertEqual(result["reachable_throughput_pct"], 100.0)
         self.assertEqual(result["ordering_p50_ms_since_start"], 0.5)
         self.assertEqual(result["healthy_nodes_final"], 1)
         self.assertEqual(result["netem_dropped_packets"], 7)
@@ -237,6 +240,29 @@ class CollectTests(unittest.TestCase):
              patch("wanbench.collect._scrape_with_retry", side_effect=[first, second]):
             check_progress_quality(
                 None, cfg, None, hosts, enforce_rate_and_lag=False)
+
+    def test_progress_quality_uses_reachable_byzantine_lane_rate(self):
+        hosts = [
+            Host(i, f"i-{i}", "public", f"10.0.0.{i + 1}")
+            for i in range(10)
+        ]
+        cfg = RunConfig(
+            nodes=10,
+            rate=1_000,
+            image="image",
+            metrics_port=6003,
+            data_lane_drop_publishers=[0, 1, 2],
+            data_lane_drop_receivers=list(range(3, 10)),
+            data_lane_drop_silent_repair=True,
+        )
+        first = {host.index: "committed_transactions 0\n" for host in hosts}
+        second = {host.index: "committed_transactions 2000\n" for host in hosts}
+        with patch("wanbench.collect.time.sleep"), \
+             patch("wanbench.collect.time.monotonic", side_effect=[0, 10]), \
+             patch("wanbench.collect._scrape_with_retry", side_effect=[first, second]):
+            # 200 tx/s is below 25% of total offered (250), but above 25% of
+            # the 700 tx/s that can reach honest validators (175).
+            check_progress_quality(None, cfg, None, hosts)
 
     def test_progress_quality_rejects_wide_boot_spread(self):
         hosts = [Host(i, f"i-{i}", "public", f"10.0.0.{i + 1}") for i in range(3)]
