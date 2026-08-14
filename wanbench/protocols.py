@@ -260,6 +260,9 @@ class _VantageBinaryProtocol(Vantage):
     def parameters(self, pubkeys: list[dict] | None = None) -> dict:
         p = super().parameters(pubkeys)
         p["protocol"] = self.PROTOCOL
+        # Autobahn Appendix A.2 sets the local consensus timeout to 10*Delta.
+        if self.PROTOCOL in ("autobahn-optimistic", "autobahn-seamless"):
+            p["timeout_delay"] = 10 * self.cfg.delta_ms
         return p
 
 

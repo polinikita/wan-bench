@@ -14,10 +14,22 @@ from wanbench.deploy import (CLIENT_ACTIVATION_MARGIN_MS, _deploy_starfish,
 from wanbench.monitoring import (_dashboard_json, _portable_dashboard,
                                  _prometheus_yml, validator_targets,
                                  write_archive_bundle)
-from wanbench.protocols import Starfish, Vantage, _docker_prefix
+from wanbench.protocols import (AutobahnOptimistic, AutobahnSeamless,
+                                SimpleIt, SimpleItBracha, Starfish, Vantage,
+                                _docker_prefix)
 from wanbench.ssh import Host
 
 class ProtocolTests(unittest.TestCase):
+    def test_vantage_binary_protocol_timers_follow_their_proofs(self):
+        cfg = RunConfig(nodes=4, rate=400, image="image", delta_ms=200)
+
+        self.assertEqual(
+            AutobahnOptimistic(cfg).parameters()["timeout_delay"], 2_000)
+        self.assertEqual(
+            AutobahnSeamless(cfg).parameters()["timeout_delay"], 2_000)
+        self.assertEqual(SimpleIt(cfg).parameters()["timeout_delay"], 1_600)
+        self.assertEqual(SimpleItBracha(cfg).parameters()["timeout_delay"], 1_000)
+
     def test_prometheus_scrape_interval_is_configurable_for_onset_debugging(self):
         yml = _prometheus_yml(["10.0.0.1:6003"], scrape_interval_s=5)
         self.assertIn("scrape_interval: 5s", yml)

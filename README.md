@@ -150,6 +150,8 @@ Run configuration is defined by `RunConfig` in
 - `echo_avail_claims: true` for Vantage-family protocols
 - `vantage_compact_ids: true` for Vantage
 - `max_header_delay_ms: 100`
+- `delta_ms: 200`; Autobahn derives a `10 * Delta` round timeout and the
+  Simple-IT adapters derive `8 * Delta` (Opt-RBC) or `5 * Delta` (Bracha-RBC)
 - `prometheus_scrape_interval_s: 30`
 - `keep_monitoring_on_down: false`
 - `ssh_open_cidr: null`, resolved to the caller's public `/32`
