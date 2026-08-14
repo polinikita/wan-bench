@@ -248,7 +248,7 @@ class ProtocolTests(unittest.TestCase):
             image="image",
             key_name="key",
             data_lane_drop_staggered_senders=13,
-            data_lane_drop_staggered_width=13,
+            data_lane_drop_staggered_width=26,
             data_lane_drop_publisher_stride=3,
             data_lane_drop_staggered_stride=13,
             data_lane_drop_silent_repair=True,
@@ -263,7 +263,7 @@ class ProtocolTests(unittest.TestCase):
         parameters = Vantage(cfg).parameters(pubkeys)
 
         self.assertEqual(parameters["withhold_senders"], 0)
-        self.assertEqual(parameters["withhold_count"], 13)
+        self.assertEqual(parameters["withhold_count"], 26)
         self.assertEqual(parameters["withhold_stride"], 13)
         self.assertTrue(parameters["withhold_repair"])
         self.assertFalse(parameters["withhold_headers"])
@@ -281,11 +281,11 @@ class ProtocolTests(unittest.TestCase):
             (position + 1) % 40 not in publisher_positions
             for position in publisher_positions
         ))
-        missing_per_correct_leader = {
+        held_per_correct_leader = {
             position: sum(
-                position in {
+                position not in {
                     (publisher + offset * 13) % 40
-                    for offset in range(1, 14)
+                    for offset in range(1, 27)
                 }
                 for publisher in publisher_positions
             )
@@ -293,20 +293,26 @@ class ProtocolTests(unittest.TestCase):
             if position not in publisher_positions
         }
         self.assertEqual(
-            sorted(missing_per_correct_leader.values()),
+            sorted(held_per_correct_leader.values()),
             [4] * 18 + [5] * 9,
         )
+        for publisher in publisher_positions:
+            omitted = {
+                (publisher + offset * 13) % 40
+                for offset in range(1, 27)
+            }
+            self.assertEqual(40 - len(omitted), 14)
 
     def test_leader_relay_workload_splits_useful_and_adversarial_rates_exactly(self):
         cfg = RunConfig(
             nodes=40,
-            rate=108_000,
+            rate=97_200,
             adversarial_rate=52_000,
             correct_load_only=True,
             image="image",
             key_name="key",
             data_lane_drop_staggered_senders=13,
-            data_lane_drop_staggered_width=13,
+            data_lane_drop_staggered_width=26,
             data_lane_drop_publisher_stride=3,
             data_lane_drop_staggered_stride=13,
             data_lane_drop_silent_repair=True,
@@ -327,13 +333,13 @@ class ProtocolTests(unittest.TestCase):
             for command in commands
         ]
 
-        self.assertEqual(sum(useful), 108_000)
+        self.assertEqual(sum(useful), 97_200)
         self.assertEqual(sum(adversarial), 52_000)
         publishers = set(cfg._data_lane_drop_runtime_publishers)
         self.assertTrue(all(useful[index] == 0 for index in publishers))
         self.assertTrue(all(adversarial[index] == 4_000 for index in publishers))
         self.assertTrue(all(
-            useful[index] == 4_000 and adversarial[index] == 0
+            useful[index] == 3_600 and adversarial[index] == 0
             for index in range(40) if index not in publishers
         ))
 
@@ -395,13 +401,13 @@ class ProtocolTests(unittest.TestCase):
             "key_name": "key",
             "correct_load_only": True,
             "data_lane_drop_staggered_senders": 13,
-            "data_lane_drop_staggered_width": 13,
+            "data_lane_drop_staggered_width": 26,
             "data_lane_drop_publisher_stride": 3,
             "data_lane_drop_staggered_stride": 13,
         }
         for fields, error in (
             ({"rate": 100_000}, "27 load-bearing"),
-            ({"rate": 108_000, "adversarial_rate": 50_000},
+            ({"rate": 97_200, "adversarial_rate": 50_000},
              "13 withholding"),
         ):
             cfg = RunConfig(**common, **fields)

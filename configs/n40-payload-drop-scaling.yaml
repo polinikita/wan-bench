@@ -7,7 +7,7 @@ warmup_s: 30
 window_s: 120
 drop_tolerance_pct: 5
 stop_on_drop: false
-strict_through_rate: 104000
+strict_through_rate: 52000
 min_offered_throughput_pct: null
 
 base:
@@ -30,9 +30,9 @@ base:
   image_source: registry
 
   # Counted validity demand remains fixed while only Byzantine lane payload
-  # scales. 108k divides exactly over the 27 correct validators (4k each);
+  # scales. 97.2k divides exactly over the 27 correct validators (3.6k each);
   # every 52k background step adds 4k tx/s to each of the 13 faulty authors.
-  rate: 108000
+  rate: 97200
   correct_load_only: true
   tx_size: 512
   tx_mode: random
@@ -43,13 +43,14 @@ base:
   spam_lead_ms: 25000
   prometheus_scrape_interval_s: 5
 
-  # f=13 Byzantine lane authors narrowcast each heavy worker batch to a
-  # different 26-node subset, publish lane headers normally, and never answer
-  # repair. Publisher stride 3 avoids consecutive Byzantine leaders; omission
-  # stride 13 makes every correct leader hold 8-9 faulty tips and relay
-  # them to the 4-5 subsets that are missing them.
+  # f=13 Byzantine lane authors narrowcast each heavy worker batch to exactly
+  # 13 peers (14 direct holders including self), publish lane headers normally,
+  # and never answer repair. Publisher stride 3 avoids consecutive Byzantine
+  # leaders; omission stride 13 makes every correct leader hold 4-5 faulty tips
+  # and lack the other 8-9. Each proposed held tip makes that leader the repair
+  # source for its 26 non-holders.
   data_lane_drop_staggered_senders: 13
-  data_lane_drop_staggered_width: 13
+  data_lane_drop_staggered_width: 26
   data_lane_drop_publisher_stride: 3
   data_lane_drop_staggered_stride: 13
   data_lane_drop_silent_repair: true
