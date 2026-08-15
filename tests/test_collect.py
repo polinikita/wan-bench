@@ -13,9 +13,10 @@ from wanbench.collect import (_bandwidth_fields, _metrics_ports, _scrape_one,
 from wanbench.config import RunConfig
 from wanbench.ssh import Host
 
-def metrics(port, committed, cpu):
+def metrics(port, committed, cpu, committed_uncounted=0):
     return f"""# WANBENCH_OK {port}
 committed_transactions {committed}
+committed_uncounted_transactions {committed_uncounted}
 committed_bytes {committed * 512}
 transaction_committed_latency{{v="p50"}} 500
 transaction_committed_latency{{v="p90"}} 900
@@ -42,7 +43,10 @@ class CollectTests(unittest.TestCase):
 
     def test_valid_collection_emits_strict_json_and_explicit_latency_units(self):
         base = {0: metrics(6007, 10, 1) + metrics(6003, 0, 2)}
-        final = {0: metrics(6007, 1010, 3) + metrics(6003, 0, 4)}
+        final = {
+            0: metrics(6007, 1010, 3, committed_uncounted=300)
+            + metrics(6003, 0, 4)
+        }
         with tempfile.TemporaryDirectory() as tmp, \
              patch("wanbench.collect.time.sleep"), \
              patch("wanbench.collect.time.monotonic", side_effect=[0, 0, 0, 10]), \
@@ -52,6 +56,7 @@ class CollectTests(unittest.TestCase):
                              baseline_at=0, final_at=10, strict=True)
             raw = (Path(tmp) / "summary.json").read_text()
         self.assertEqual(result["tps_median"], 100.0)
+        self.assertEqual(result["committed_uncounted_tps_median"], 30.0)
         self.assertEqual(result["reachable_rate"], 100)
         self.assertEqual(result["unreachable_rate"], 0)
         self.assertEqual(result["reachable_throughput_pct"], 100.0)

@@ -74,15 +74,18 @@ The current leader-relay experiment sweeps one uniform total workload. At
 `n=100`, all validators receive the same input share; the 33 Byzantine authors'
 shares traverse the normal data path but are excluded from honest goodput and
 latency. Each Byzantine author deliberately forms one batch per `Delta` and
-sends it to the full Byzantine cohort plus an `f`-wide rotating correct group
-(`2f` direct holders, exactly one below quorum). All authors retain that group
-for five batches, then advance it by `f`; every correct leader is covered by
-the disclosed `5 Delta = 1 s` epochs and holds all faulty lanes while selected. Headers remain visible, and the Byzantine
-cohort refuses repair. When one of those publishers is the Autobahn consensus
+sends it only to an `(f-1)`-wide rotating correct group. Together with the
+author's local copy, this gives exactly `f` direct holders, one below the `f+1`
+PoA threshold; the other Byzantine validators do not receive the bytes. All
+authors retain that group for five batches, then advance it by `f-1`; every
+correct leader is covered by the disclosed `5 Delta = 1 s` epochs and holds all
+faulty lanes while selected. Headers remain visible, and Byzantine authors
+refuse repair. When one of those publishers is the Autobahn consensus
 leader it proposes its certified cut, avoiding a separate self-inflicted
-timeout; honest leaders retain the optimistic relay path. For Autobahn, selected Byzantine cars are
-capped at one digest so their lanes advance and each optimistic proposer must
-relay its locally held tips. The other protocols retain their normal lane
+timeout; honest leaders retain the optimistic relay path. For Autobahn,
+selected Byzantine cars are capped at one digest, keeping one sub-PoA tip
+active until later dissemination supplies another holder. Each targeted
+optimistic proposer must relay its locally held tips. The other protocols retain their normal lane
 rules. The campaign uses private addresses, `c5d.2xlarge` instances, and the
 AWS RTT matrix through `tc netem`:
 
@@ -228,6 +231,8 @@ rate, and reachable-rate labels.
 by its sequenced transaction bytes, matching the Bluestreak committee-scaling
 metric. The estimated non-payload value subtracts the `(n-1)/n` payload share;
 it still includes framing, retries, and other control traffic.
+For Vantage-family leader-relay runs, `committed_uncounted_tps_median` records
+committed marker-2 Byzantine payload separately from useful `tps_median`.
 
 Promote a sweep to a self-contained record with:
 

@@ -341,7 +341,7 @@ class ProtocolTests(unittest.TestCase):
             }
             self.assertEqual(40 - len(omitted), 14)
 
-    def test_n100_leader_relay_uses_uniform_load_and_exact_poa_holders(self):
+    def test_n100_leader_relay_uses_uniform_load_and_sub_poa_holders(self):
         cfg = RunConfig(
             nodes=100,
             rate=100_000,
@@ -376,7 +376,7 @@ class ProtocolTests(unittest.TestCase):
             expected = "false" if index in publishers else "true"
             self.assertIn(f"-e TX_COUNTED={expected}", command)
 
-    def test_leader_relay_rejects_profiles_that_cannot_keep_lanes_advancing(self):
+    def test_leader_relay_rejects_profiles_outside_the_sub_poa_fault_model(self):
         common = {
             "nodes": 100,
             "rate": 100_000,

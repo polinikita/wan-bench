@@ -135,12 +135,13 @@ class RunConfig:
     # True drops original lane headers as well as worker batches. False keeps
     # metadata visible and isolates the heavy-payload repair burden.
     data_lane_drop_headers: bool = True
-    # Selected Byzantine authors form one batch per Delta and narrowcast it to
-    # the full Byzantine cohort plus the same f-wide correct group (2f direct
-    # holders, one below quorum). They keep it for five batches, then advance it
-    # by f. When selected as a consensus leader, a publisher uses
-    # its certified cut so the experiment isolates honest-leader relay. Their uniform load shares consume
-    # resources but are excluded from honest-goodput and latency metrics.
+    # Selected Byzantine authors form one batch per Delta, retain the local
+    # copy, and narrowcast it only to the same (f-1)-wide correct group. These f
+    # direct holders are one below PoA. They keep the group for five batches,
+    # then advance it by f-1. When selected as a consensus leader, a publisher
+    # uses its certified cut so the experiment isolates honest-leader relay.
+    # Their uniform load shares consume resources but are excluded from
+    # honest-goodput and latency metrics.
     leader_relay_attack: bool = False
 
     # --- metrics-active window ---

@@ -18,6 +18,7 @@ from .ssh import Host, Ssh
 METRICS = {
     "vantage": {
         "committed": "committed_transactions",
+        "committed_uncounted": "committed_uncounted_transactions",
         "committed_bytes": "committed_bytes",
         # Node-side measurement clock.
         "active_seconds": "metrics_active_seconds",
@@ -394,6 +395,9 @@ def collect(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
     # Report a representative window while retaining per-node rate denominators.
     window = statistics.median(node_window.values()) if node_window else wall_window
     committed = [delta(i, m["committed"]) for i in indices]
+    committed_uncounted = [
+        delta(i, m["committed_uncounted"]) for i in indices
+    ] if "committed_uncounted" in m else [0.0 for _ in indices]
     committed_bytes = [delta(i, m["committed_bytes"]) for i in indices]
     if strict and any(value < 0 for value in committed):
         raise RuntimeError(
@@ -408,6 +412,9 @@ def collect(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
     reset_nodes = sorted(reset_set)
     live = [i for i in indices if i not in reset_set]
     committed = [c for i, c in zip(indices, committed) if i not in reset_set]
+    committed_uncounted = [
+        c for i, c in zip(indices, committed_uncounted) if i not in reset_set
+    ]
     committed_bytes = [c for i, c in zip(indices, committed_bytes)
                        if i not in reset_set]
     if reset_nodes:
@@ -426,7 +433,13 @@ def collect(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
         return value / w if w else 0.0
 
     node_tps = [per_node_rate(i, c) for i, c in zip(live, committed)]
+    node_uncounted_tps = [
+        per_node_rate(i, c) for i, c in zip(live, committed_uncounted)
+    ]
     tps = statistics.median(node_tps) if node_tps else 0.0
+    uncounted_tps = (
+        statistics.median(node_uncounted_tps) if node_uncounted_tps else 0.0
+    )
     if strict and node_tps:
         floor = tps * STRICT_MIN_NODE_RATE_PCT_OF_MEDIAN / 100.0
         slow = [(i, round(rate, 1)) for i, rate in zip(live, node_tps) if rate < floor]
@@ -493,6 +506,8 @@ def collect(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
         "healthy_nodes_baseline": healthy(base),
         "healthy_nodes_final": healthy(fin),
         "tps_median": round(tps, 1),
+        # Committed marker-2 workload is sequenced normally but excluded from useful TPS.
+        "committed_uncounted_tps_median": round(uncounted_tps, 1),
         "tps_min": round(min(node_tps), 1) if node_tps else 0.0,
         # Latency reporters are cumulative from process start.
         "ordering_p50_ms_since_start": _msround(
