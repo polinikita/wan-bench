@@ -196,13 +196,13 @@ class PaperThroughputCampaignTests(unittest.TestCase):
 
 
 class DataLaneDropCampaignTests(unittest.TestCase):
-    def test_n100_leader_relay_manifest_is_the_uniform_three_protocol_sweep(self):
+    def test_n40_leader_relay_manifest_is_the_uniform_three_protocol_sweep(self):
         path = (Path(__file__).parents[1] / "configs" /
-                "n100-leader-relay-scaling.yaml")
+                "n40-leader-relay-scaling.yaml")
         campaign = CampaignConfig.load(str(path))
         configs = campaign.configs()
 
-        self.assertEqual(campaign.committee_sizes, [100])
+        self.assertEqual(campaign.committee_sizes, [40])
         self.assertEqual(campaign.sweep_field, "rate")
         self.assertEqual(campaign.rates[0], 1_000)
         self.assertEqual(campaign.rates[-1], 250_000)
@@ -215,12 +215,12 @@ class DataLaneDropCampaignTests(unittest.TestCase):
             self.assertEqual(cfg.instance_type, "c5d.2xlarge")
             self.assertEqual((cfg.region, cfg.az), ("eu-west-1", "eu-west-1a"))
             self.assertEqual(cfg.wan.mode, "netem")
-            self.assertEqual(cfg.data_lane_drop_staggered_senders, 33)
-            self.assertEqual(cfg.data_lane_drop_staggered_width, 99)
+            self.assertEqual(cfg.data_lane_drop_staggered_senders, 13)
+            self.assertEqual(cfg.data_lane_drop_staggered_width, 39)
             self.assertTrue(cfg.data_lane_drop_silent_repair)
             self.assertFalse(cfg.data_lane_drop_headers)
             self.assertTrue(cfg.leader_relay_attack)
-            self.assertEqual(cfg.reachable_rate(), 670)
+            self.assertEqual(cfg.reachable_rate(), 675)
             self.assertEqual(cfg.image_source, "build-on-control")
 
     def test_n100_manifest_matches_the_three_protocol_fault_matrix(self):

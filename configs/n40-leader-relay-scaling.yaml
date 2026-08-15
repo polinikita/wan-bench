@@ -1,6 +1,6 @@
-name: n100-leader-relay-scaling
-output: results/n100-leader-relay-scaling
-committee_sizes: [100]
+name: n40-leader-relay-scaling
+output: results/n40-leader-relay-scaling
+committee_sizes: [40]
 rates: [1000, 5000, 10000, 20000, 40000, 60000, 80000, 100000, 125000, 150000, 175000, 200000, 250000]
 warmup_s: 30
 window_s: 120
@@ -28,7 +28,7 @@ base:
 
   # Build the exact checked-out Vantage commit on the control host, then serve
   # that immutable image to validators over the experiment's private network.
-  image: vantage-node:n100-leader-relay-20260815
+  image: vantage-node:n40-leader-relay-20260815
   image_source: build-on-control
   build_repo: ../vantage
   build_dockerfile: docker-bench/Dockerfile
@@ -42,20 +42,20 @@ base:
   spam_lead_ms: 25000
   prometheus_scrape_interval_s: 5
 
-  # f=33 Byzantine authors receive the same load share as every other author.
-  # Each Byzantine author forms one batch per Delta, retains its local copy,
-  # and sends the bytes only to the same 32=(f-1)-wide correct group. These
-  # f=33 direct holders are exactly one below the f+1=34 PoA threshold; the
-  # other Byzantine validators receive no copy. The group is held for five
-  # batches (5*Delta=1s), then advances by f-1, covering every correct leader
-  # and placing all faulty lanes at each selected leader.
-  # A selected Byzantine consensus leader proposes its certified cut; the
-  # measured optimistic relay burden is therefore placed on honest leaders.
-  # Autobahn's selected Byzantine cars carry one digest, keeping one sub-PoA
-  # tip active until later dissemination supplies another holder. Headers stay
-  # visible and Byzantine authors never answer lane repair.
-  data_lane_drop_staggered_senders: 33
-  data_lane_drop_staggered_width: 99
+  # f=13 Byzantine authors receive the same load share as every other author;
+  # their marker-2 transactions traverse the complete data path but are
+  # reported separately from honest goodput and latency. Every Byzantine lane
+  # keeps one local copy and sends every batch only to a fixed 12=(f-1)-wide
+  # correct-holder group. Its f=13 direct holders are exactly one below the
+  # f+1=14 PoA threshold, and the other Byzantine validators receive no copy.
+  # The fixed groups are staggered by f-1 across lanes, so together they cover
+  # all 27 correct consensus leaders while each holder retains a complete lane
+  # prefix. Byzantine authors form one batch per Delta and refuse repair.
+  # Byzantine consensus leaders use certified cuts; honest optimistic leaders
+  # include the locally held tips and relay their bytes before voting. Autobahn
+  # cars retain ordinary payload capacity in every protocol variant.
+  data_lane_drop_staggered_senders: 13
+  data_lane_drop_staggered_width: 39
   data_lane_drop_publisher_stride: 1
   data_lane_drop_staggered_stride: 1
   data_lane_drop_silent_repair: true

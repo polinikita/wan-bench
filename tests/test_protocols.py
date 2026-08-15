@@ -341,59 +341,64 @@ class ProtocolTests(unittest.TestCase):
             }
             self.assertEqual(40 - len(omitted), 14)
 
-    def test_n100_leader_relay_uses_uniform_load_and_sub_poa_holders(self):
+    def test_n40_leader_relay_uses_uniform_load_and_sub_poa_holders(self):
         cfg = RunConfig(
-            nodes=100,
+            nodes=40,
             rate=100_000,
             image="image",
             key_name="key",
-            data_lane_drop_staggered_senders=33,
-            data_lane_drop_staggered_width=99,
+            data_lane_drop_staggered_senders=13,
+            data_lane_drop_staggered_width=39,
             data_lane_drop_silent_repair=True,
             data_lane_drop_headers=False,
             leader_relay_attack=True,
+            all_to_all=True,
         )
         cfg.validate()
         pubkeys = [
             {"name": base64.b64encode(bytes([index]) * 32).decode()}
-            for index in range(100)
+            for index in range(40)
         ]
 
         parameters = AutobahnOptimistic(cfg).parameters(pubkeys)
-        commands = [_docker_prefix(cfg, index, "entrypoint") for index in range(100)]
+        commands = [_docker_prefix(cfg, index, "entrypoint") for index in range(40)]
         publishers = set(cfg._data_lane_drop_runtime_publishers)
 
-        self.assertEqual(len(publishers), 33)
-        self.assertEqual(parameters["withhold_count"], 99)
+        self.assertEqual(len(publishers), 13)
+        self.assertEqual(parameters["withhold_count"], 39)
         self.assertEqual(parameters["header_size"], 1_000)
         self.assertEqual(parameters["max_block_payload"], 16)
         self.assertTrue(parameters["leader_relay_attack"])
         self.assertTrue(parameters["withhold_repair"])
         self.assertFalse(parameters["withhold_headers"])
-        self.assertEqual(cfg.reachable_rate(), 67_000)
-        self.assertTrue(all("-e RATE=1000" in command for command in commands))
+        self.assertEqual(cfg.reachable_rate(), 67_500)
+        self.assertEqual(cfg.leader_relay_uncounted_rate(), 32_500)
+        self.assertTrue(all("-e RATE=2500" in command for command in commands))
         for index, command in enumerate(commands):
             expected = "false" if index in publishers else "true"
             self.assertIn(f"-e TX_COUNTED={expected}", command)
 
     def test_leader_relay_rejects_profiles_outside_the_sub_poa_fault_model(self):
         common = {
-            "nodes": 100,
+            "protocol": "autobahn-optimistic",
+            "nodes": 40,
             "rate": 100_000,
             "image": "image",
             "key_name": "key",
-            "data_lane_drop_staggered_senders": 33,
-            "data_lane_drop_staggered_width": 99,
+            "data_lane_drop_staggered_senders": 13,
+            "data_lane_drop_staggered_width": 39,
             "data_lane_drop_silent_repair": True,
             "data_lane_drop_headers": False,
             "leader_relay_attack": True,
+            "all_to_all": True,
         }
         for change, error in (
-            ({"data_lane_drop_staggered_senders": 32}, "maximal staggered"),
-            ({"data_lane_drop_staggered_width": 98}, "every non-author"),
+            ({"data_lane_drop_staggered_senders": 12}, "maximal staggered"),
+            ({"data_lane_drop_staggered_width": 38}, "every non-author"),
             ({"data_lane_drop_headers": True}, "headers visible"),
             ({"data_lane_drop_silent_repair": False}, "repair refusal"),
-            ({"correct_load_only": True, "rate": 100_031}, "uniform total workload"),
+            ({"correct_load_only": True, "rate": 99_981}, "uniform total workload"),
+            ({"all_to_all": False}, "all-to-all"),
         ):
             cfg = RunConfig(**(common | change))
             with self.subTest(change=change), self.assertRaisesRegex(ValueError, error):

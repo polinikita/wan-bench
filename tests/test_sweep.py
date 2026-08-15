@@ -113,6 +113,27 @@ class SweepTests(unittest.TestCase):
             [True, False],
         )
 
+    def test_strict_optimistic_relay_requires_byzantine_commitment(self):
+        cfg = RunConfig(
+            protocol="autobahn-optimistic",
+            nodes=40,
+            rate=1_000,
+            image="image",
+            all_to_all=True,
+            data_lane_drop_staggered_senders=13,
+            data_lane_drop_staggered_width=39,
+            data_lane_drop_silent_repair=True,
+            data_lane_drop_headers=False,
+            leader_relay_attack=True,
+        )
+        with self.assertRaisesRegex(RuntimeError, "200.0/325"):
+            sweep_mod._check_optimistic_leader_relay_commitment(
+                cfg, {"committed_uncounted_tps_median": 200.0}, strict=True)
+        sweep_mod._check_optimistic_leader_relay_commitment(
+            cfg, {"committed_uncounted_tps_median": 260.0}, strict=True)
+        sweep_mod._check_optimistic_leader_relay_commitment(
+            cfg, {"committed_uncounted_tps_median": 0.0}, strict=False)
+
     def test_no_early_stop_runs_the_full_ladder(self):
         result, persisted, _ = self.run_sweep(
             [(100, 100.0), (200, 1.0), (300, 2.0)],

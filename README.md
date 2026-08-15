@@ -71,28 +71,32 @@ harness records the isolated authors' share as unreachable instead of treating
 its expected absence as overload.
 
 The current leader-relay experiment sweeps one uniform total workload. At
-`n=100`, all validators receive the same input share; the 33 Byzantine authors'
-shares traverse the normal data path but are excluded from honest goodput and
-latency. Each Byzantine author deliberately forms one batch per `Delta` and
-sends it only to an `(f-1)`-wide rotating correct group. Together with the
-author's local copy, this gives exactly `f` direct holders, one below the `f+1`
-PoA threshold; the other Byzantine validators do not receive the bytes. All
-authors retain that group for five batches, then advance it by `f-1`; every
-correct leader is covered by the disclosed `5 Delta = 1 s` epochs and holds all
-faulty lanes while selected. Headers remain visible, and Byzantine authors
-refuse repair. When one of those publishers is the Autobahn consensus
-leader it proposes its certified cut, avoiding a separate self-inflicted
-timeout; honest leaders retain the optimistic relay path. For Autobahn,
-selected Byzantine cars are capped at one digest, keeping one sub-PoA tip
-active until later dissemination supplies another holder. Each targeted
-optimistic proposer must relay its locally held tips. The other protocols retain their normal lane
+`n=40`, all validators receive the same input share; the 13 Byzantine authors'
+shares traverse the normal data path but are reported separately from honest
+goodput and latency. Each Byzantine lane deliberately forms one batch per
+`Delta` and sends every batch only to a fixed `(f-1)=12`-wide correct-holder
+group. Together with the author's local copy, this gives exactly `f=13` direct
+holders, one below the `f+1=14` PoA threshold; the other Byzantine validators
+do not receive the bytes. Groups are staggered by `f-1` across lanes, covering
+all 27 correct consensus leaders while each holder retains a complete lane
+prefix. Headers remain visible, and Byzantine authors refuse repair. A
+Byzantine Autobahn consensus leader proposes its certified cut, avoiding a
+separate self-inflicted timeout; an honest optimistic leader includes its
+locally held tips and must relay their bytes before voting. Autobahn cars retain
+ordinary payload capacity. Vantage and Simple-IT retain their normal lane
 rules. The campaign uses private addresses, `c5d.2xlarge` instances, and the
-AWS RTT matrix through `tc netem`:
+AWS RTT matrix through `tc netem`. Its total offered-TPS ladder is 1k, 5k, 10k,
+20k, 40k, 60k, 80k, 100k, 125k, 150k, 175k, 200k, and 250k:
 
 ```bash
-wanbench campaign --config configs/n100-leader-relay-scaling.yaml
-wanbench campaign --config configs/n100-leader-relay-scaling.yaml --execute
+wanbench campaign --config configs/n40-leader-relay-scaling.yaml
+wanbench campaign --config configs/n40-leader-relay-scaling.yaml --execute
 ```
+
+The 1k, 5k, and 10k Optimistic points are strict regressions: each is retried
+and then fails unless at least 80% of the offered Byzantine share appears in
+`committed_uncounted_tps_median`. At 1k total offered load, the expected split
+is 675 honest and 325 Byzantine tx/s.
 
 The older fixed-useful-load/background-payload diagnostic remains in
 [`configs/n40-payload-drop-scaling.yaml`](configs/n40-payload-drop-scaling.yaml).

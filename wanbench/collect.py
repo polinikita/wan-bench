@@ -486,6 +486,7 @@ def collect(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
                    for host in hosts)
 
     reachable_rate = cfg.reachable_rate()
+    expected_uncounted_tps = cfg.leader_relay_uncounted_rate()
     summary = {
         "run_id": cfg.run_id, "protocol": cfg.protocol, "nodes": cfg.nodes,
         "rate": cfg.rate, "adversarial_rate": cfg.adversarial_rate,
@@ -508,6 +509,11 @@ def collect(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
         "tps_median": round(tps, 1),
         # Committed marker-2 workload is sequenced normally but excluded from useful TPS.
         "committed_uncounted_tps_median": round(uncounted_tps, 1),
+        "expected_uncounted_tps": expected_uncounted_tps,
+        "uncounted_throughput_pct": (
+            round(100.0 * uncounted_tps / expected_uncounted_tps, 1)
+            if expected_uncounted_tps else None
+        ),
         "tps_min": round(min(node_tps), 1) if node_tps else 0.0,
         # Latency reporters are cumulative from process start.
         "ordering_p50_ms_since_start": _msround(

@@ -75,7 +75,7 @@ def _docker_prefix(cfg: RunConfig, idx: int, entrypoint: str, env_extra: str = "
     )
     counted = not (cfg.leader_relay_attack and idx in publishers)
     ep = f"--entrypoint {entrypoint} " if entrypoint else ""
-    # n=100 exceeds Docker's default 1024-file limit with full-mesh connections.
+    # Large full-mesh committees exceed Docker's default 1024-file limit.
     return (f"docker run -d --name wanbench-node --restart no --network host "
             f"--ulimit nofile=65536:65536 "
             f"--cap-add NET_ADMIN -v /opt/wanbench:/wanbench "
@@ -135,9 +135,8 @@ class Vantage(ProtocolAdapter):
             "asynchrony_duration": 10_000,
             "protocol": "vantage",
             "tx_mode": self.cfg.tx_mode,
-            # This remains the protocol-wide validation bound. The Vantage
-            # binary's Autobahn path separately caps only selected Byzantine
-            # publishers to one digest per car during a leader-relay run.
+            # This remains the protocol-wide validation bound. Leader-relay
+            # experiments retain ordinary Autobahn car capacity.
             "max_block_payload": 16,
             "delta_ms": self.cfg.delta_ms,
             # Transactions submitted before this timestamp are excluded.

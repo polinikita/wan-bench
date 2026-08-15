@@ -19,11 +19,30 @@ from .ssh import Host, Ssh
 WARMUP_S = 30
 WINDOW_S = 120
 DROP_TOLERANCE_PCT = 5.0
+LEADER_RELAY_MIN_UNCOUNTED_PCT = 80.0
 _RETRYABLE_POINT_ERRORS = (
     RuntimeError,
     OSError,
     subprocess.SubprocessError,
 )
+
+
+def _check_optimistic_leader_relay_commitment(
+        cfg: RunConfig, summary: dict, strict: bool) -> None:
+    """Require low-load Optimistic points to commit the Byzantine share."""
+    if (not strict or not cfg.leader_relay_attack or
+            cfg.protocol != "autobahn-optimistic"):
+        return
+    expected = cfg.leader_relay_uncounted_rate()
+    observed = summary.get("committed_uncounted_tps_median")
+    if observed is None:
+        raise RuntimeError(
+            "optimistic leader-relay is missing committed-uncounted metrics")
+    floor = expected * LEADER_RELAY_MIN_UNCOUNTED_PCT / 100.0
+    if observed < floor:
+        raise RuntimeError(
+            f"optimistic leader-relay committed only {observed:.1f}/{expected} "
+            f"Byzantine tx/s, below {LEADER_RELAY_MIN_UNCOUNTED_PCT:.0f}%")
 
 
 def _reset_nodes(ssh: Ssh, hosts: list[Host]) -> None:
@@ -212,6 +231,8 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                             ssh, cfg, control, hosts, str(out / point_dir),
                             baseline_at=warmup_s, final_at=warmup_s + window_s,
                             strict=strict_point)
+                        _check_optimistic_leader_relay_commitment(
+                            cfg, summary, strict_point)
                         break
                     except _RETRYABLE_POINT_ERRORS as exc:
                         if not captured_failure:

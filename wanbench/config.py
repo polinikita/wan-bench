@@ -136,11 +136,12 @@ class RunConfig:
     # metadata visible and isolates the heavy-payload repair burden.
     data_lane_drop_headers: bool = True
     # Selected Byzantine authors form one batch per Delta, retain the local
-    # copy, and narrowcast it only to the same (f-1)-wide correct group. These f
-    # direct holders are one below PoA. They keep the group for five batches,
-    # then advance it by f-1. When selected as a consensus leader, a publisher
-    # uses its certified cut so the experiment isolates honest-leader relay.
-    # Their uniform load shares consume resources but are excluded from
+    # copy, and narrowcast their complete lane prefix only to a fixed
+    # (f-1)-wide correct group. These f direct holders are one below PoA.
+    # Groups are staggered across lanes so every correct consensus leader is
+    # burdened. When selected as a leader, a Byzantine publisher uses its
+    # certified cut so the experiment isolates honest-leader relay. Uniform
+    # Byzantine load consumes resources but is reported separately from
     # honest-goodput and latency metrics.
     leader_relay_attack: bool = False
 
@@ -211,6 +212,10 @@ class RunConfig:
         """Return the reachable share of the counted aggregate workload."""
         return self.reachable_rate() / self.rate
 
+    def leader_relay_uncounted_rate(self) -> int:
+        """Return the Byzantine share of a uniform leader-relay workload."""
+        return self.rate - self.reachable_rate() if self.leader_relay_attack else 0
+
     @classmethod
     def from_dict(cls, data: dict) -> "RunConfig":
         raw = copy.deepcopy(data)
@@ -245,6 +250,8 @@ class RunConfig:
             raise ValueError("config: adversarial_rate must be a non-negative integer")
         if type(self.correct_load_only) is not bool:
             raise ValueError("config: correct_load_only must be boolean")
+        if type(self.all_to_all) is not bool:
+            raise ValueError("config: all_to_all must be boolean")
         if self.tx_size < 1:
             raise ValueError("config: tx_size must be >= 1")
         self.tx_mode = self.tx_mode.replace("-", "_")  # legacy "all-zero" alias
@@ -367,6 +374,9 @@ class RunConfig:
                 raise ValueError(
                     "config: leader_relay_attack uses one uniform total workload; "
                     "disable correct_load_only and adversarial_rate")
+            if self.protocol == "autobahn-optimistic" and not self.all_to_all:
+                raise ValueError(
+                    "config: optimistic leader-relay requires Autobahn all-to-all")
         if self.protocol == "vantage" and self.metrics_port != 6003:
             raise ValueError("config: vantage primary metrics_port is fixed at 6003")
         if self.protocol == "starfish" and self.nodes < 4:
