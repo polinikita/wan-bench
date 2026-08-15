@@ -196,6 +196,44 @@ class PaperThroughputCampaignTests(unittest.TestCase):
 
 
 class DataLaneDropCampaignTests(unittest.TestCase):
+    def test_n20_leader_relay_manifest_matches_local_fault_profile(self):
+        path = (Path(__file__).parents[1] / "configs" /
+                "n20-leader-relay-scaling.yaml")
+        campaign = CampaignConfig.load(str(path))
+        configs = campaign.configs()
+
+        self.assertEqual(campaign.committee_sizes, [20])
+        self.assertEqual(campaign.sweep_field, "rate")
+        self.assertEqual(
+            campaign.rates,
+            [100, 1_000, 10_000, 20_000, 100_000, 200_000],
+        )
+        self.assertEqual(campaign.strict_through_rate, 99)
+        self.assertEqual(campaign.drop_tolerance_pct, 20)
+        self.assertEqual(campaign.min_offered_throughput_pct, 25)
+        self.assertEqual(
+            [name for name, _cfg in configs],
+            ["autobahn-optimistic-a2a", "vantage", "simpleit-optrbc"],
+        )
+        self.assertTrue(configs[0][1].all_to_all)
+        for _name, cfg in configs:
+            self.assertEqual(cfg.instance_type, "c5d.2xlarge")
+            self.assertEqual((cfg.region, cfg.az), ("eu-west-1", "eu-west-1a"))
+            self.assertEqual(cfg.wan.mode, "netem")
+            self.assertEqual(cfg.data_lane_drop_staggered_senders, 6)
+            self.assertEqual(cfg.data_lane_drop_staggered_width, 19)
+            self.assertTrue(cfg.data_lane_drop_silent_repair)
+            self.assertFalse(cfg.data_lane_drop_headers)
+            self.assertTrue(cfg.leader_relay_attack)
+            self.assertEqual(cfg.reachable_rate(), 70)
+            self.assertEqual(cfg.leader_relay_uncounted_rate(), 30)
+            self.assertEqual(cfg.image_source, "registry")
+            self.assertEqual(
+                cfg.image,
+                "ghcr.io/polinikita/vantage-node:"
+                "13b4c20f0869c0df52133f6ffa5ca3632ab42e94",
+            )
+
     def test_n40_leader_relay_manifest_is_the_uniform_three_protocol_sweep(self):
         path = (Path(__file__).parents[1] / "configs" /
                 "n40-leader-relay-scaling.yaml")
@@ -204,7 +242,7 @@ class DataLaneDropCampaignTests(unittest.TestCase):
 
         self.assertEqual(campaign.committee_sizes, [40])
         self.assertEqual(campaign.sweep_field, "rate")
-        self.assertEqual(campaign.rates[0], 1_000)
+        self.assertEqual(campaign.rates[:6], [80, 200, 400, 600, 800, 1_000])
         self.assertEqual(campaign.rates[-1], 250_000)
         self.assertEqual(
             [name for name, _cfg in configs],
@@ -220,8 +258,14 @@ class DataLaneDropCampaignTests(unittest.TestCase):
             self.assertTrue(cfg.data_lane_drop_silent_repair)
             self.assertFalse(cfg.data_lane_drop_headers)
             self.assertTrue(cfg.leader_relay_attack)
-            self.assertEqual(cfg.reachable_rate(), 675)
-            self.assertEqual(cfg.image_source, "build-on-control")
+            self.assertEqual(cfg.reachable_rate(), 54)
+            self.assertEqual(cfg.leader_relay_uncounted_rate(), 26)
+            self.assertEqual(cfg.image_source, "registry")
+            self.assertEqual(
+                cfg.image,
+                "ghcr.io/polinikita/vantage-node:"
+                "13b4c20f0869c0df52133f6ffa5ca3632ab42e94",
+            )
 
     def test_n100_manifest_matches_the_three_protocol_fault_matrix(self):
         path = (Path(__file__).parents[1] / "configs" /

@@ -71,32 +71,51 @@ harness records the isolated authors' share as unreachable instead of treating
 its expected absence as overload.
 
 The current leader-relay experiment sweeps one uniform total workload. At
-`n=40`, all validators receive the same input share; the 13 Byzantine authors'
+`n=20`, all validators receive the same input share; the six Byzantine authors'
 shares traverse the normal data path but are reported separately from honest
 goodput and latency. Each Byzantine lane deliberately forms one batch per
-`Delta` and sends every batch only to a fixed `(f-1)=12`-wide correct-holder
-group. Together with the author's local copy, this gives exactly `f=13` direct
-holders, one below the `f+1=14` PoA threshold; the other Byzantine validators
-do not receive the bytes. Groups are staggered by `f-1` across lanes, covering
-all 27 correct consensus leaders while each holder retains a complete lane
-prefix. Headers remain visible, and Byzantine authors refuse repair. A
+`Delta` and sends every batch only to a fixed `(f-1)=5`-wide correct-holder
+group. Together with the author's local copy, this gives exactly `f=6` direct
+holders, one below the `f+1=7` PoA threshold; the other Byzantine validators do
+not receive the bytes. Groups are staggered across lanes, covering all 14
+correct consensus leaders while each holder retains a complete lane prefix.
+The `n=40` manifest applies the same construction with `f=13`, 12 correct
+holders per Byzantine lane, and all 27 correct leaders covered. Headers remain
+visible, and Byzantine authors refuse repair. A
 Byzantine Autobahn consensus leader proposes its certified cut, avoiding a
 separate self-inflicted timeout; an honest optimistic leader includes its
 locally held tips and must relay their bytes before voting. Autobahn cars retain
 ordinary payload capacity. Vantage and Simple-IT retain their normal lane
 rules. The campaign uses private addresses, `c5d.2xlarge` instances, and the
-AWS RTT matrix through `tc netem`. Its total offered-TPS ladder is 1k, 5k, 10k,
-20k, 40k, 60k, 80k, 100k, 125k, 150k, 175k, 200k, and 250k:
+AWS RTT matrix through `tc netem`. The `n=20` capacity ladder is the compact
+100, 1k, 10k, 20k, 100k, and 200k TPS series. The `n=40` regression retains
+the finer 80, 200, 400, 600, 800, 1k, 5k, 10k, 20k, 40k, 60k, 80k, 100k,
+125k, 150k, 175k, 200k, and 250k series:
 
 ```bash
+wanbench campaign --config configs/n20-leader-relay-scaling.yaml
+
+# Execute each protocol on a fresh fleet. A terminal overload must not leave
+# the next protocol dependent on SSH recovery from the previous one.
+wanbench campaign --config configs/n20-leader-relay-scaling.yaml \
+  --only autobahn-optimistic-a2a --out results/n20-leader-relay-optimistic --execute
+wanbench campaign --config configs/n20-leader-relay-scaling.yaml \
+  --only vantage --out results/n20-leader-relay-vantage --execute
+wanbench campaign --config configs/n20-leader-relay-scaling.yaml \
+  --only simpleit-optrbc --out results/n20-leader-relay-simpleit --execute
+
 wanbench campaign --config configs/n40-leader-relay-scaling.yaml
 wanbench campaign --config configs/n40-leader-relay-scaling.yaml --execute
 ```
 
-The 1k, 5k, and 10k Optimistic points are strict regressions: each is retried
-and then fails unless at least 80% of the offered Byzantine share appears in
-`committed_uncounted_tps_median`. At 1k total offered load, the expected split
-is 675 honest and 325 Byzantine tx/s.
+The `n=20` capacity study treats every point as exploratory: it records replica
+skew and Byzantine commitment without rejecting the point, and stops only after
+a 20% throughput fall or when useful throughput is below 25% of reachable
+offered load. The `n=40` manifest remains a strict regression through 10k: each
+Optimistic point is retried and then fails unless at least 80% of the offered
+Byzantine share appears in `committed_uncounted_tps_median`. At 1k total offered
+load, the expected split is 700 honest and 300 Byzantine tx/s for `n=20`, and
+675 honest and 325 Byzantine tx/s for `n=40`.
 
 The older fixed-useful-load/background-payload diagnostic remains in
 [`configs/n40-payload-drop-scaling.yaml`](configs/n40-payload-drop-scaling.yaml).
@@ -292,6 +311,9 @@ The Starfish payload-compaction validation is in
 
 The Vantage n=20 latency, traffic, and seal-route study is in
 [`recorded/vantage-n20-pipeline-20260812`](recorded/vantage-n20-pipeline-20260812).
+
+The n=20 Byzantine leader-relay capacity comparison is in
+[`recorded/n20-leader-relay-20260815`](recorded/n20-leader-relay-20260815).
 
 ## Tests
 

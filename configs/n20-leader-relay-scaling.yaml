@@ -1,13 +1,16 @@
-name: n40-leader-relay-scaling
-output: results/n40-leader-relay-scaling
-committee_sizes: [40]
-rates: [80, 200, 400, 600, 800, 1000, 5000, 10000, 20000, 40000, 60000, 80000, 100000, 125000, 150000, 175000, 200000, 250000]
+name: n20-leader-relay-scaling
+output: results/n20-leader-relay-scaling
+committee_sizes: [20]
+rates: [100, 1000, 10000, 20000, 100000, 200000]
 warmup_s: 30
 window_s: 120
-drop_tolerance_pct: 5
+drop_tolerance_pct: 20
 stop_on_drop: true
-strict_through_rate: 10000
-min_offered_throughput_pct: 50
+# This is a capacity study, not a pass/fail regression. Keeping the threshold
+# below the first offered rate makes every measured point exploratory: replica
+# skew and Byzantine commitment are recorded without censoring the curve.
+strict_through_rate: 99
+min_offered_throughput_pct: 25
 
 base:
   region: eu-west-1
@@ -40,20 +43,17 @@ base:
   spam_lead_ms: 25000
   prometheus_scrape_interval_s: 5
 
-  # f=13 Byzantine authors receive the same load share as every other author;
+  # f=6 Byzantine authors receive the same load share as every other author;
   # their marker-2 transactions traverse the complete data path but are
   # reported separately from honest goodput and latency. Every Byzantine lane
-  # keeps one local copy and sends every batch only to a fixed 12=(f-1)-wide
-  # correct-holder group. Its f=13 direct holders are exactly one below the
-  # f+1=14 PoA threshold, and the other Byzantine validators receive no copy.
-  # The fixed groups are staggered by f-1 across lanes, so together they cover
-  # all 27 correct consensus leaders while each holder retains a complete lane
+  # keeps one local copy and sends every batch only to a fixed 5=(f-1)-wide
+  # correct-holder group. Its f=6 direct holders are exactly one below the
+  # f+1=7 PoA threshold, and the other Byzantine validators receive no copy.
+  # The fixed groups are staggered across lanes so that together they burden
+  # all 14 correct consensus leaders while each holder retains a complete lane
   # prefix. Byzantine authors form one batch per Delta and refuse repair.
-  # Byzantine consensus leaders use certified cuts; honest optimistic leaders
-  # include the locally held tips and relay their bytes before voting. Autobahn
-  # cars retain ordinary payload capacity in every protocol variant.
-  data_lane_drop_staggered_senders: 13
-  data_lane_drop_staggered_width: 39
+  data_lane_drop_staggered_senders: 6
+  data_lane_drop_staggered_width: 19
   data_lane_drop_publisher_stride: 1
   data_lane_drop_staggered_stride: 1
   data_lane_drop_silent_repair: true
