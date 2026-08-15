@@ -70,12 +70,28 @@ Byzantine lane profile that omits every non-publisher and refuses repair, the
 harness records the isolated authors' share as unreachable instead of treating
 its expected absence as overload.
 
-For the leader-relay experiment, a campaign may set
-`sweep_field: adversarial_rate`. In that mode `base.rate` remains the fixed,
-counted useful load, `correct_load_only: true` places it only on non-withholding
-authors, and the ladder scales uncounted payload on the withholding authors.
-Both streams traverse the normal protocol data path; only the useful stream is
-reported as committed goodput. See
+The current leader-relay experiment sweeps one uniform total workload. At
+`n=100`, all validators receive the same input share; the 33 Byzantine authors'
+shares traverse the normal data path but are excluded from honest goodput and
+latency. Each Byzantine author deliberately forms one batch per `Delta` and
+sends it to the full Byzantine cohort plus an `f`-wide rotating correct group
+(`2f` direct holders, exactly one below quorum). All authors retain that group
+for five batches, then advance it by `f`; every correct leader is covered by
+the disclosed `5 Delta = 1 s` epochs and holds all faulty lanes while selected. Headers remain visible, and the Byzantine
+cohort refuses repair. When one of those publishers is the Autobahn consensus
+leader it proposes its certified cut, avoiding a separate self-inflicted
+timeout; honest leaders retain the optimistic relay path. For Autobahn, selected Byzantine cars are
+capped at one digest so their lanes advance and each optimistic proposer must
+relay its locally held tips. The other protocols retain their normal lane
+rules. The campaign uses private addresses, `c5d.2xlarge` instances, and the
+AWS RTT matrix through `tc netem`:
+
+```bash
+wanbench campaign --config configs/n100-leader-relay-scaling.yaml
+wanbench campaign --config configs/n100-leader-relay-scaling.yaml --execute
+```
+
+The older fixed-useful-load/background-payload diagnostic remains in
 [`configs/n40-payload-drop-scaling.yaml`](configs/n40-payload-drop-scaling.yaml).
 
 The prepared `n=100` Byzantine-lane campaign compares Autobahn optimistic

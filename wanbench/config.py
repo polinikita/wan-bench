@@ -135,6 +135,13 @@ class RunConfig:
     # True drops original lane headers as well as worker batches. False keeps
     # metadata visible and isolates the heavy-payload repair burden.
     data_lane_drop_headers: bool = True
+    # Selected Byzantine authors form one batch per Delta and narrowcast it to
+    # the full Byzantine cohort plus the same f-wide correct group (2f direct
+    # holders, one below quorum). They keep it for five batches, then advance it
+    # by f. When selected as a consensus leader, a publisher uses
+    # its certified cut so the experiment isolates honest-leader relay. Their uniform load shares consume
+    # resources but are excluded from honest-goodput and latency metrics.
+    leader_relay_attack: bool = False
 
     # --- metrics-active window ---
     # Delay load until deployment and committee formation should be complete.
@@ -190,6 +197,11 @@ class RunConfig:
         """Return counted offered tx/s that honest validators can materialize."""
         if self.correct_load_only:
             return self.rate
+        if self.leader_relay_attack:
+            publishers = (len(self.data_lane_drop_publishers)
+                          if self.data_lane_drop_publishers
+                          else self.data_lane_drop_staggered_senders)
+            return self.rate * (self.nodes - publishers) // self.nodes
         available_authors = self.nodes - self.permanently_unavailable_publisher_count()
         # Validation makes rate exactly divisible by all load-bearing validators.
         return self.rate * available_authors // self.nodes
@@ -333,6 +345,27 @@ class RunConfig:
         if self.data_lane_drop_silent_repair and not has_data_lane_drop:
             raise ValueError(
                 "config: silent data-lane repair requires a data-lane drop profile")
+        if type(self.leader_relay_attack) is not bool:
+            raise ValueError("config: leader_relay_attack must be boolean")
+        if self.leader_relay_attack:
+            fault_budget = (self.nodes - 1) // 3
+            if not staggered or staggered_senders != fault_budget:
+                raise ValueError(
+                    "config: leader_relay_attack requires the maximal staggered "
+                    "Byzantine publisher set")
+            if staggered_width != self.nodes - 1:
+                raise ValueError(
+                    "config: leader_relay_attack must withhold from every non-author")
+            if self.data_lane_drop_headers:
+                raise ValueError(
+                    "config: leader_relay_attack must keep lane headers visible")
+            if not self.data_lane_drop_silent_repair:
+                raise ValueError(
+                    "config: leader_relay_attack requires Byzantine repair refusal")
+            if self.correct_load_only or self.adversarial_rate:
+                raise ValueError(
+                    "config: leader_relay_attack uses one uniform total workload; "
+                    "disable correct_load_only and adversarial_rate")
         if self.protocol == "vantage" and self.metrics_port != 6003:
             raise ValueError("config: vantage primary metrics_port is fixed at 6003")
         if self.protocol == "starfish" and self.nodes < 4:
