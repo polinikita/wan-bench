@@ -5,6 +5,7 @@ from __future__ import annotations
 import abc
 import base64
 import json
+import secrets
 
 from .config import RunConfig
 from .ssh import Host
@@ -130,6 +131,14 @@ class Vantage(ProtocolAdapter):
             "use_ride_share": False,
             "car_timeout": 2000,
             "all_to_all": self.cfg.all_to_all,
+            "channel_auth": self.cfg.channel_auth,
+            # One seed per deploy: the parameter document is built once and copied to
+            # every validator, so all pairs expand the same key material. This stands in
+            # for out-of-band provisioning.
+            "channel_auth_seed": (
+                base64.b64encode(secrets.token_bytes(32)).decode()
+                if self.cfg.channel_auth else None
+            ),
             "simulate_asynchrony": False,
             "asynchrony_start": 20_000,
             "asynchrony_duration": 10_000,

@@ -29,6 +29,7 @@ _VARIANT_FIELDS = frozenset({
     "metrics_port",
     "protocol_flags",
     "all_to_all",
+    "channel_auth",
     "echo_avail_claims",
     "vantage_compact_ids",
     "dashboards",

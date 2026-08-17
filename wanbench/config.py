@@ -104,6 +104,9 @@ class RunConfig:
     protocol_flags: list[str] = field(default_factory=list)
     # Broadcast Autobahn consensus votes instead of sending them to the leader.
     all_to_all: bool = False
+    # Authenticate cross-validator links with a per-frame pairwise MAC. The model assumes
+    # authenticated channels; off by default so points stay comparable with earlier runs.
+    channel_auth: bool = False
     # Carry availability claims on AGB echoes instead of dedicated messages.
     echo_avail_claims: bool = True
     # Use one-byte committee identifiers on the Vantage primary wire.
@@ -252,6 +255,8 @@ class RunConfig:
             raise ValueError("config: correct_load_only must be boolean")
         if type(self.all_to_all) is not bool:
             raise ValueError("config: all_to_all must be boolean")
+        if type(self.channel_auth) is not bool:
+            raise ValueError("config: channel_auth must be boolean")
         if self.tx_size < 1:
             raise ValueError("config: tx_size must be >= 1")
         self.tx_mode = self.tx_mode.replace("-", "_")  # legacy "all-zero" alias
