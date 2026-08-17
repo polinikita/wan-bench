@@ -30,6 +30,8 @@ _VARIANT_FIELDS = frozenset({
     "protocol_flags",
     "all_to_all",
     "channel_auth",
+    # Sweeping the header delay pairs both settings on one fleet.
+    "max_header_delay_ms",
     "echo_avail_claims",
     "vantage_compact_ids",
     "dashboards",
