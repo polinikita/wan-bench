@@ -1,5 +1,5 @@
-name: n20-leader-relay-scaling
-output: results/n20-leader-relay-scaling
+name: paper-n20-leader-relay-simpleit
+output: results/paper-n20-leader-relay-simpleit
 committee_sizes: [20]
 rates: [100, 1000, 10000, 20000, 100000, 200000]
 warmup_s: 30
@@ -34,7 +34,7 @@ base:
 
   # Published from Vantage commit 13b4c20. Campaign preflight resolves this
   # commit tag to its immutable GHCR digest before provisioning any instances.
-  image: ghcr.io/polinikita/vantage-node:13b4c20f0869c0df52133f6ffa5ca3632ab42e94
+  image: ghcr.io/polinikita/vantage-node@sha256:a8497560d6e199eb1012231371fb3171393d23f9dbee11e9b98f6b119a58bd95
   image_source: registry
 
   tx_size: 512
@@ -73,18 +73,9 @@ base:
   fault:
     kind: none
 
+# The relay attack leaks state across variants on a reused fleet, so each
+# protocol runs its own campaign, matching the recorded reference trio.
 variants:
-  - name: autobahn-optimistic-a2a
-    protocol: autobahn-optimistic
-    metrics_port: 6003
-    all_to_all: true
-
-  - name: vantage
-    protocol: vantage
-    metrics_port: 6003
-    echo_avail_claims: true
-    vantage_compact_ids: true
-
   - name: simpleit-optrbc
     protocol: simple-it
     metrics_port: 6003
