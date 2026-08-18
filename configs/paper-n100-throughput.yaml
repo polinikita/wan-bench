@@ -1,7 +1,7 @@
 name: paper-n100-throughput
 output: results/paper-n100-throughput
 committee_sizes: [100]
-rates: [100, 10000, 150000, 200000, 225000, 250000, 275000]
+rates: [100, 10000, 150000, 200000, 225000, 250000, 275000, 300000]
 warmup_s: 30
 window_s: 120
 drop_tolerance_pct: 5
@@ -48,8 +48,8 @@ base:
 variants:
   - name: vantage
     protocol: vantage
-    # Vantage commit 13b4c20f0869c0df52133f6ffa5ca3632ab42e94.
-    image: &vantage_image ghcr.io/polinikita/vantage-node@sha256:e4bc05f09ee916c4fd77fdc8cb6fec00009e67bcdab50529667f829152db756c
+    # Vantage commit 175c0ba5f6ec203dad2cae877e860f3eb7a2ffc7.
+    image: &vantage_image ghcr.io/polinikita/vantage-node@sha256:a8497560d6e199eb1012231371fb3171393d23f9dbee11e9b98f6b119a58bd95
     metrics_port: 6003
     echo_avail_claims: true
     vantage_compact_ids: true
