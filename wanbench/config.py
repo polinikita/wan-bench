@@ -105,8 +105,9 @@ class RunConfig:
     # Broadcast Autobahn consensus votes instead of sending them to the leader.
     all_to_all: bool = False
     # Authenticate cross-validator links with a per-frame pairwise MAC. The model assumes
-    # authenticated channels; off by default so points stay comparable with earlier runs.
-    channel_auth: bool = False
+    # authenticated channels, so runs carry that cost by default; set false to reproduce a
+    # figure collected before authentication existed. The seed is minted per deploy.
+    channel_auth: bool = True
     # Carry availability claims on AGB echoes instead of dedicated messages.
     echo_avail_claims: bool = True
     # Use one-byte committee identifiers on the Vantage primary wire.
