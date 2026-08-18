@@ -1,0 +1,7 @@
+variant,protocol,variant_status,overloaded,rate,reachable_rate,unreachable_rate,reachable_throughput_pct,tps_median,tps_min,material_p50_ms_since_start,material_p90_ms_since_start,material_p99_ms_since_start,cpu_cores_p50,rss_mb_median,wire_mb_per_s_p50,bandwidth_efficiency_p50,healthy_nodes_baseline,healthy_nodes_final,netem_dropped_packets,panics_total
+vantage,vantage,completed,False,100,100,0,99.9,99.9,99.5,464.5,559.0,618.5,1.114,722.9,0.7,13.5553,100,100,0,0.0
+vantage,vantage,completed,False,10000,10000,0,99.9,9991.9,9972.5,465.0,555.0,623.5,1.552,1385.5,6.04,1.1816,100,100,0,0.0
+vantage,vantage,completed,False,150000,150000,0,100.0,149980.1,149582.3,488.0,582.0,657.0,2.667,2623.6,78.17,1.0181,100,100,0,0.0
+vantage,vantage,completed,False,200000,200000,0,100.0,200041.9,199715.3,496.0,589.5,666.0,3.017,3042.0,103.91,1.0146,100,100,0,0.0
+vantage,vantage,completed,False,225000,225000,0,98.8,222339.9,197593.4,538.5,723.5,1155.0,3.284,3373.7,116.79,1.0259,100,100,0,0.0
+vantage,vantage,completed,True,250000,250000,0,69.6,174054.6,64272.6,561.0,966.0,1198.0,3.052,3786.8,104.33,1.1703,100,100,0,0.0

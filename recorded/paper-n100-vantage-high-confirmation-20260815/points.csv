@@ -1,0 +1,2 @@
+variant,protocol,variant_status,overloaded,rate,reachable_rate,unreachable_rate,reachable_throughput_pct,tps_median,tps_min,material_p50_ms_since_start,material_p90_ms_since_start,material_p99_ms_since_start,cpu_cores_p50,rss_mb_median,wire_mb_per_s_p50,bandwidth_efficiency_p50,healthy_nodes_baseline,healthy_nodes_final,netem_dropped_packets,panics_total
+vantage,vantage,completed,True,250000,250000,0,92.6,231539.6,229727.1,509.5,603.0,683.5,3.492,3768.6,128.79,1.0855,100,100,0,0.0
