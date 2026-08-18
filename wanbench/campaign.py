@@ -54,6 +54,7 @@ class CampaignConfig:
     window_s: int
     drop_tolerance_pct: float
     stop_on_drop: bool
+    point_attempts: int
     strict_through_rate: int | None
     min_offered_throughput_pct: float | None
     committee_sizes: list[int]
@@ -67,7 +68,7 @@ class CampaignConfig:
             raise ValueError("campaign config must be a mapping")
         allowed = {
             "name", "output", "sweep_field", "rates", "warmup_s", "window_s",
-            "drop_tolerance_pct", "stop_on_drop", "strict_through_rate",
+            "drop_tolerance_pct", "stop_on_drop", "point_attempts", "strict_through_rate",
             "min_offered_throughput_pct",
             "committee_sizes",
             "base", "variants",
@@ -160,6 +161,9 @@ class CampaignConfig:
         stop_on_drop = raw.get("stop_on_drop", True)
         if type(stop_on_drop) is not bool:
             raise ValueError("campaign: stop_on_drop must be boolean")
+        point_attempts = raw.get("point_attempts", 2)
+        if type(point_attempts) is not int or point_attempts < 1:
+            raise ValueError("campaign: point_attempts must be an int >= 1")
         strict_through_rate = raw.get("strict_through_rate")
         if (strict_through_rate is not None and
                 (type(strict_through_rate) is not int or strict_through_rate <= 0)):
@@ -184,6 +188,7 @@ class CampaignConfig:
             window_s=window_s,
             drop_tolerance_pct=drop_tolerance_pct,
             stop_on_drop=stop_on_drop,
+            point_attempts=point_attempts,
             strict_through_rate=strict_through_rate,
             min_offered_throughput_pct=min_offered_throughput_pct,
             committee_sizes=committee_sizes,
@@ -561,6 +566,7 @@ def execute(campaign: CampaignConfig, configs: list[tuple[str, RunConfig]],
                     window_s=campaign.window_s,
                     drop_tolerance_pct=campaign.drop_tolerance_pct,
                     stop_on_drop=campaign.stop_on_drop,
+                    point_attempts=campaign.point_attempts,
                     strict_through_rate=campaign.strict_through_rate,
                     min_offered_throughput_pct=(
                         campaign.min_offered_throughput_pct

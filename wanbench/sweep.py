@@ -55,6 +55,7 @@ def _reset_nodes(ssh: Ssh, hosts: list[Host]) -> None:
 def sweep(cfg: RunConfig, rates: list[int], outdir: str,
           sweep_field: str = "rate",
           warmup_s: int = WARMUP_S, window_s: int = WINDOW_S,
+          point_attempts: int = 2,
           drop_tolerance_pct: float = DROP_TOLERANCE_PCT,
           stop_on_drop: bool = True,
           strict_through_rate: int | None = None,
@@ -92,6 +93,8 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
         raise ValueError(f"sweep warmup must be >= 0, got {warmup_s}")
     if window_s <= 0:
         raise ValueError(f"sweep window must be > 0, got {window_s}")
+    if point_attempts < 1:
+        raise ValueError(f"sweep point_attempts must be >= 1, got {point_attempts}")
     if not 0 <= drop_tolerance_pct < 100:
         raise ValueError(
             f"sweep drop tolerance must be in [0, 100), got {drop_tolerance_pct}")
@@ -169,7 +172,7 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                 # Renew orphan protection before each point.
                 prepare.arm_deadman(ssh, hosts + [control], cfg.deadman_minutes,
                                     quiet=True)
-                attempts_left = 2
+                attempts_left = point_attempts
                 attempt = 0
                 while True:
                     attempts_left -= 1

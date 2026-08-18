@@ -6,6 +6,9 @@ warmup_s: 30
 window_s: 120
 drop_tolerance_pct: 5
 stop_on_drop: true
+# Three repetitions supersede intra-repetition retries: a flaky point is
+# outvoted by the cross-repetition median instead of rerun on the same fleet.
+point_attempts: 1
 min_offered_throughput_pct: 95
 
 base:
