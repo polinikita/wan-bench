@@ -34,6 +34,16 @@ already exists is skipped, so an interrupted sequence resumes by rerunning the
 same command. Fleets are provisioned per repetition and torn down afterwards;
 never leave a run unattended without the deadman timer in the config.
 
+`./vantage/run-all.sh` schedules the whole three-by-three matrix under a
+vCPU quota (`VCPU_CAP`, default 1800): each campaign is reserved at its peak
+footprint (an n=100 fleet is 808 vCPUs), throughput repetitions lead because
+they are the critical path, and shorter fleets fill the remaining headroom.
+Under 1800 vCPUs two n=100 fleets run side by side with leader relay in the
+gap, and the full matrix completes in roughly two throughput repetitions of
+wall time. Expect occasional single-AZ capacity stalls above two hundred
+concurrent instances; a failed repetition is rerun by invoking the script
+again.
+
 ## Instance sizing (measured, not guessed)
 
 Every question runs on c5d.2xlarge (8 vCPU / 16 GB), so all figures share one
