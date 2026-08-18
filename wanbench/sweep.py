@@ -119,7 +119,8 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                     "min_offered_throughput_pct": min_offered_throughput_pct,
                     "metric_labels": dict(metric_labels or {}),
                     "sweep_field": sweep_field,
-                    "rates": rates, "points": [], "stopped_early": False,
+                    "rates": rates, "points": [], "failed_points": [],
+                    "stopped_early": False,
                     "stop_reason": None, "status": "running", "error": None,
                     "effective_config": None}
 
@@ -177,6 +178,7 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                     point_dir = (point_stem if attempt == 1
                                  else f"{point_stem}-attempt{attempt}")
                     captured_failure = False
+                    point_failed = False
                     try:
                         _reset_nodes(ssh, hosts)
                         labels = {
@@ -239,7 +241,23 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                             dump_failure_scrapes(ssh, cfg, control, hosts,
                                                  str(out / point_dir), "failure")
                         if attempts_left <= 0:
-                            raise
+                            # stop_on_drop governs whether the ladder ends early. A point
+                            # that exhausts its attempts is the strongest form of drop, so
+                            # honour the same switch: raising here would discard every
+                            # higher rate, which is exactly the data a full matrix wants.
+                            if stop_on_drop:
+                                raise
+                            print(f"sweep: point {sweep_field}={sweep_value:,} failed "
+                                  f"after every attempt ({exc}); recording it and "
+                                  f"continuing to the next {sweep_field}", flush=True)
+                            result["failed_points"].append({
+                                sweep_field: sweep_value,
+                                "rate": cfg.rate,
+                                "attempts": attempt,
+                                "error": f"{type(exc).__name__}: {exc}",
+                            })
+                            point_failed = True
+                            break
                         print(f"sweep: point {sweep_field}={sweep_value:,} failed "
                               f"({exc}); retrying "
                               f"once with a full node reset", flush=True)
@@ -248,7 +266,13 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                     {sweep_field: sweep_value, "rate": cfg.rate,
                      "reachable_rate": reachable_rate,
                      "adversarial_rate": cfg.adversarial_rate,
-                     "deploy_s": deploy_s, "measure_s": measure_s})
+                     "deploy_s": deploy_s, "measure_s": measure_s,
+                     "failed": point_failed})
+                if point_failed:
+                    # No summary exists for this rate; its scrapes are on disk under the
+                    # per-attempt directories for analysis.
+                    checkpoint()
+                    continue
                 summary["strict_validation"] = strict_point
                 summary["sweep_field"] = sweep_field
                 summary["sweep_value"] = sweep_value
