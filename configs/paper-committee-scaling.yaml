@@ -14,7 +14,7 @@ base:
   az: eu-west-1a
   instance_type: c5d.2xlarge
   key_name: wanbench-key
-  ssh_key_path: ~/.ssh/wanbench-key.pem
+  ssh_key_path: ~/.ssh/id_ed25519_nikita_iota6
   ssh_user: ubuntu
   ssh_open_cidr: null
   spot: false
