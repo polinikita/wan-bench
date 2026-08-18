@@ -183,6 +183,49 @@ def _successful_ports(text: str) -> set[int]:
     return {int(port) for port in re.findall(r"^# WANBENCH_OK (\d+)$", text, re.M)}
 
 
+def _port_blocks(text: str) -> dict[int, str]:
+    """Split a concatenated scrape into per-endpoint blocks keyed by port."""
+    blocks: dict[int, str] = {}
+    port: int | None = None
+    lines: list[str] = []
+    for line in text.splitlines():
+        m = re.match(r"^# WANBENCH_OK (\d+)$", line)
+        if m:
+            if port is not None:
+                blocks[port] = "\n".join(lines)
+            port = int(m.group(1))
+            lines = []
+        else:
+            lines.append(line)
+    if port is not None:
+        blocks[port] = "\n".join(lines)
+    return blocks
+
+
+def _carrier_window(fin_text: str, base_text: str, family: str,
+                    active_family: str) -> float:
+    """Return the active-clock delta of the endpoint that carries `family`.
+
+    Each endpoint gates its metrics on its own clock, so a counter divided by
+    another endpoint's active window under-reports whenever a scrape lands in
+    the gap between the two gates. The carrier is the block holding the
+    family's largest final value; the fallback of 0.0 keeps the caller's
+    wall-window substitution behavior.
+    """
+    fin_blocks = _port_blocks(fin_text)
+    if not fin_blocks:
+        return 0.0
+    carrier = max(fin_blocks, key=lambda p: _family_sum(fin_blocks[p], family))
+    base_blocks = _port_blocks(base_text)
+    if carrier not in base_blocks:
+        return 0.0
+    fin_active = _family_values(fin_blocks[carrier], active_family)
+    base_active = _family_values(base_blocks[carrier], active_family)
+    if not fin_active or not base_active:
+        return 0.0
+    return max(fin_active) - max(base_active)
+
+
 def _has_family(text: str, family: str) -> bool:
     return re.search(rf"^{re.escape(family)}(?:{{[^}}]*}})?\s+\S+", text, re.M) is not None
 
@@ -354,7 +397,24 @@ def collect(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
     if strict:
         _validate_snapshot(cfg, hosts, base, "baseline")
 
-    time.sleep(max(0, final_at - (time.monotonic() - t0)))
+    final_sleep = max(0, final_at - (time.monotonic() - t0))
+    # The final scrape must observe a still-loaded system: landing after the
+    # client stops freezes the counters under a still-ticking active clock and
+    # under-reports every rate by the overhang. The pre-measurement barriers
+    # delay t0 by a variable amount, so the requested final_at is clamped to
+    # the absolute load end derived from the metrics gate.
+    if cfg.metrics_active_at_ms is not None and cfg.duration_s:
+        load_end_s = (cfg.metrics_active_at_ms - cfg.spam_lead_ms) / 1000.0 \
+            + cfg.duration_s
+        latest = load_end_s - 5.0
+        overhang = (time.time() + final_sleep) - latest
+        if overhang > 0:
+            clamped = max(0.0, final_sleep - overhang)
+            print(f"collect: final scrape clamped {final_sleep - clamped:.1f}s "
+                  f"earlier to land before the client stops "
+                  f"(window shortens accordingly)", flush=True)
+            final_sleep = clamped
+    time.sleep(final_sleep)
     fin = _scrape_with_retry(ssh, cfg, control, hosts)
     fin_ts = time.monotonic()
     for i, txt in fin.items():
@@ -394,6 +454,16 @@ def collect(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
     used_node_clock = any(d > 0 for d in active_deltas.values())
     # Report a representative window while retaining per-node rate denominators.
     window = statistics.median(node_window.values()) if node_window else wall_window
+    # Throughput must divide the committed delta by the committed counter's OWN
+    # endpoint clock: the max-across-processes window above over-counts whenever
+    # the baseline scrape lands between two endpoints' metrics gates.
+    committed_window = {
+        i: _carrier_window(fin[i], base[i], m["committed"], m["active_seconds"])
+        for i in indices
+    }
+    tps_window = {
+        i: (d if d > 0 else node_window[i]) for i, d in committed_window.items()
+    }
     committed = [delta(i, m["committed"]) for i in indices]
     committed_uncounted = [
         delta(i, m["committed_uncounted"]) for i in indices
@@ -432,9 +502,13 @@ def collect(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
         w = node_window[i]
         return value / w if w else 0.0
 
-    node_tps = [per_node_rate(i, c) for i, c in zip(live, committed)]
+    def per_node_tps(i: int, value: float) -> float:
+        w = tps_window[i]
+        return value / w if w else 0.0
+
+    node_tps = [per_node_tps(i, c) for i, c in zip(live, committed)]
     node_uncounted_tps = [
-        per_node_rate(i, c) for i, c in zip(live, committed_uncounted)
+        per_node_tps(i, c) for i, c in zip(live, committed_uncounted)
     ]
     tps = statistics.median(node_tps) if node_tps else 0.0
     uncounted_tps = (
