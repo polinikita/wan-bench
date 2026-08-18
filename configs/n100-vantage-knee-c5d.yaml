@@ -60,7 +60,7 @@ variants:
     # Vantage 6671e4ee6e86e5a9c33c6375b60229fb3af2460b. Channel authentication is on by
     # default from this commit, so these points carry the per-frame pairwise MAC and are
     # not directly comparable to earlier unauthenticated figures at the same rates.
-    image: ghcr.io/polinikita/vantage-node:6671e4ee6e86e5a9c33c6375b60229fb3af2460b
+    image: ghcr.io/polinikita/vantage-node:3ebf8173444357dae45282c4a4d05a82ee552101
     metrics_port: 6003
     echo_avail_claims: true
     vantage_compact_ids: true
