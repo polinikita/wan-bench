@@ -8,7 +8,7 @@ is kept visible so instability is never averaged away.
 | question | folder | config | fleet |
 |---|---|---|---|
 | Throughput and latency versus the baselines at n=100 | `throughput/` | `configs/paper-n100-throughput.yaml` | 100+1 × c5d.2xlarge |
-| Latency, CPU, and wire cost as the committee grows | `committee-scaling/` | `configs/paper-committee-scaling.yaml` | up to 100+1 × c5d.xlarge |
+| Latency, CPU, and wire cost as the committee grows | `committee-scaling/` | `configs/paper-committee-scaling.yaml` | up to 100+1 × c5d.2xlarge |
 | Behavior under leader-relay faults at n=20 | `leader-relay/` | `configs/n20-leader-relay-scaling.yaml` | 20+1 × c5d.2xlarge |
 
 ## Prerequisites
@@ -36,12 +36,13 @@ never leave a run unattended without the deadman timer in the config.
 
 ## Instance sizing (measured, not guessed)
 
-From the recorded campaigns: at 250-275k tx/s the median node needs 3.0-3.2
-cores with peaks above 4 (sailfish-pp needs 4.2 cores at 150k already) and up
-to 7.1 GiB of memory (autobahn-seamless at 275k) — the throughput question
-therefore needs 8 vCPU / 16 GB (c5d.2xlarge). Committee scaling at 100 tx/s
-fits 4 vCPU / 8 GB (c5d.xlarge, its config default). Leader relay at n=20
-would fit 4 vCPU, but keeps c5d.2xlarge for headroom on a 21-instance fleet.
+Every question runs on c5d.2xlarge (8 vCPU / 16 GB), so all figures share one
+platform. The sizing is dictated by the measured load, not caution: at
+250-275k tx/s the median node needs 3.0-3.2 cores with peaks above 4
+(sailfish-pp needs 4.2 cores at 150k already, vantage itself reaches 3.6 at
+250k) and up to 7.1 GiB of memory (autobahn-seamless at 275k). Lighter
+questions would fit 4 vCPU, but nonuniform hardware would let a reviewer
+attribute cross-protocol differences to provisioning.
 
 ## Metrics
 

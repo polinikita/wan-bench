@@ -6,8 +6,8 @@
 #   REPS=N ./run.sh      a different repetition count
 #   ./run.sh summarize   median across repetitions per (variant, n), with spread
 #
-# Fleet: up to 100 validators + 1 control, c5d.xlarge, eu-west-1a. 4 vCPU / 8 GB
-# fits this question (heaviest measured cell: sailfish-pp at 2.87 cores, n=100).
+# Fleet: up to 100 validators + 1 control, c5d.2xlarge, eu-west-1a — the same
+# hardware as every other question, so all figures share one platform.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 

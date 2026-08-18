@@ -12,7 +12,7 @@ base:
   region: eu-west-1
   profile: null
   az: eu-west-1a
-  instance_type: c5d.xlarge
+  instance_type: c5d.2xlarge
   key_name: wanbench-key
   ssh_key_path: ~/.ssh/wanbench-key.pem
   ssh_user: ubuntu
