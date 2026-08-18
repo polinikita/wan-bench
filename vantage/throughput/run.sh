@@ -24,10 +24,17 @@ fi
 mkdir -p "$OUT_BASE"
 for rep in $(seq 1 "$REPS"); do
     out="$OUT_BASE/rep-$rep"
-    if [ -e "$out" ]; then
-        echo "run.sh: $out exists, skipping (delete it to rerun)"
-        continue
-    fi
+    status=$(python3 -c 'import json,sys
+try: print(json.load(open(sys.argv[1] + "/campaign.json")).get("status", "absent"))
+except OSError: print("absent")' "$out")
+    case "$status" in
+        completed|completed_with_failures)
+            echo "run.sh: $out is $status, skipping (delete it to rerun)"
+            continue ;;
+        absent) resume=() ;;
+        *) echo "run.sh: $out is '$status', resuming"; resume=(--resume) ;;
+    esac
     python3 -m wanbench.cli campaign --config "$CONFIG" --out "$out" --execute \
-        2>&1 | tee "$OUT_BASE/rep-$rep.log"
+        ${resume[@]+"${resume[@]}"} \
+        2>&1 | tee -a "$OUT_BASE/rep-$rep.log"
 done

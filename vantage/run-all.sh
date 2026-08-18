@@ -27,13 +27,23 @@ UNITS=(
 declare -a run_pids run_cost run_name
 used=0
 
+# Terminal campaign states; anything else in an existing directory resumes.
+rep_status() {
+    python3 -c 'import json,sys
+try: print(json.load(open(sys.argv[1] + "/campaign.json")).get("status", "absent"))
+except OSError: print("absent")' "$1"
+}
+
 launch() {
     local question=$1 config=$2 cost=$3 rep=$4
     local out="results/vantage/$question/rep-$rep"
+    local resume=()
+    [ -d "$out" ] && resume=(--resume)
     mkdir -p "results/vantage/$question"
-    echo "run-all: launching $question rep-$rep (+$cost vCPU, $((used + cost))/$VCPU_CAP)"
+    echo "run-all: launching $question rep-$rep ${resume[0]:-} (+$cost vCPU, $((used + cost))/$VCPU_CAP)"
     python3 -m wanbench.cli campaign --config "$config" --out "$out" --execute \
-        > "results/vantage/$question/rep-$rep.log" 2>&1 &
+        ${resume[@]+"${resume[@]}"} \
+        >> "results/vantage/$question/rep-$rep.log" 2>&1 &
     run_pids+=($!)
     run_cost+=("$cost")
     run_name+=("$question rep-$rep")
@@ -62,11 +72,16 @@ pending=()
 for unit in "${UNITS[@]}"; do
     IFS=: read -r question config cost <<< "$unit"
     for rep in $(seq 1 "$REPS"); do
-        if [ -e "results/vantage/$question/rep-$rep" ]; then
-            echo "run-all: $question rep-$rep exists, skipping"
-        else
-            pending+=("$question:$config:$cost:$rep")
-        fi
+        status=$(rep_status "results/vantage/$question/rep-$rep")
+        case "$status" in
+            completed|completed_with_failures)
+                echo "run-all: $question rep-$rep is $status, skipping" ;;
+            absent)
+                pending+=("$question:$config:$cost:$rep") ;;
+            *)
+                echo "run-all: $question rep-$rep is '$status', will resume"
+                pending+=("$question:$config:$cost:$rep") ;;
+        esac
     done
 done
 
