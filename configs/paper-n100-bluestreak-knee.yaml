@@ -19,8 +19,8 @@ base:
   region: eu-west-1
   profile: null
   az: eu-west-1a
-  # 8 vCPUs, 16 GiB memory, and one 200 GB local NVMe SSD.
-  instance_type: c5d.2xlarge
+  # 8 vCPUs, 32 GiB memory, and one 300 GB local NVMe SSD (matches the recorded m5d-gc campaign).
+  instance_type: m5d.2xlarge
   key_name: wanbench-key
   ssh_key_path: ~/.ssh/id_ed25519_nikita_iota6
   ssh_user: ubuntu

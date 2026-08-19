@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Targeted knee windows for the two Starfish-artifact baselines on the
-# uniform c5d.2xlarge fleet with the payload-compacted image:
+# Targeted knee windows for the two Starfish-artifact baselines on
+# m5d.2xlarge (32 GiB, 300 GB NVMe -- matches the recorded m5d-gc campaign)
+# with the payload-compacted image:
 #   Bluestreak   225k / 250k / 275k
 #   Sailfish++   150k / 170k / 200k
-# Two repetitions by default; the paper reports the median per cell.  The
-# full-ladder rep-1 sweeps for these variants (pre-compaction image, OOM at
-# 200k) live in results/vantage/_invalid and are excluded from medians.
+# Two repetitions by default; the paper reports the median per cell and must
+# disclose the baseline fleet difference.  Invalid prior attempts live in
+# results/vantage/_invalid: the pre-compaction full-ladder rep-1 sweeps (OOM
+# at 200k) and the c5d knee attempt (Bluestreak hit a sub-knee ceiling at
+# 225k with idle CPU and healthy memory).
 #
 #   ./knee.sh             two repetitions (fresh fleet each), skipping done ones
 #   REPS=N ./knee.sh      a different repetition count
