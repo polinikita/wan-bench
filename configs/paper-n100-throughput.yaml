@@ -90,7 +90,7 @@ variants:
 
   - name: bluestreak
     protocol: starfish
-    image: &starfish_image ghcr.io/iotaledger/starfish@sha256:2cd487533ac9610bb9f260ae888c02a0d5dc0499279f92bb269e1b10f82b46a7
+    image: &starfish_image ghcr.io/iotaledger/starfish-node@sha256:3f7ee52dff606214e1dd979c31783f4bb4391405c2317c4b41b0728a89d04d88
     metrics_port: 1500
     protocol_flags: [--consensus, bluestreak]
 
