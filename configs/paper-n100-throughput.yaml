@@ -59,18 +59,22 @@ variants:
 
   - name: autobahn-optimistic-a2a
     protocol: autobahn-optimistic
-    # Autobahn's n=100 startup wedges nondeterministically on the current
-    # stack (fleet-correlated; 3 of 4 fleets); it runs on its last image
-    # proven at this scale until the startup race is root-caused.
+    # Autobahn primaries wedge at startup on the current stack with per-node
+    # probability growing in the committee size (none at n<=20, partial at
+    # n=50, near-total at n=100; reproduced on four fleets). It runs on its
+    # last image proven at this scale until the startup race is root-caused;
+    # evidence bundle: ~/autobahn-n100-hang-evidence-20260820.tar.zst.
     image: ghcr.io/polinikita/vantage-node@sha256:21fc32aabbddee2c547b9ad262bf8d2694a482a7baefc217f45e2e2e7eadcf50
     metrics_port: 6003
     all_to_all: true
 
   - name: autobahn-seamless
     protocol: autobahn-seamless
-    # Autobahn's n=100 startup wedges nondeterministically on the current
-    # stack (fleet-correlated; 3 of 4 fleets); it runs on its last image
-    # proven at this scale until the startup race is root-caused.
+    # Autobahn primaries wedge at startup on the current stack with per-node
+    # probability growing in the committee size (none at n<=20, partial at
+    # n=50, near-total at n=100; reproduced on four fleets). It runs on its
+    # last image proven at this scale until the startup race is root-caused;
+    # evidence bundle: ~/autobahn-n100-hang-evidence-20260820.tar.zst.
     image: ghcr.io/polinikita/vantage-node@sha256:21fc32aabbddee2c547b9ad262bf8d2694a482a7baefc217f45e2e2e7eadcf50
     metrics_port: 6003
 
