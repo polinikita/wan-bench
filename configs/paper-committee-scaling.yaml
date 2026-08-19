@@ -1,6 +1,9 @@
 name: paper-committee-scaling
 output: results/paper-committee-scaling
-committee_sizes: [10, 20, 50, 100]
+# The n=100 cell is not measured here: on uniform c5d.2xlarge it is identical
+# to the throughput ladder's rate-100 point, which every repetition already
+# measures. Figures join scaling n<=50 with throughput's rate-100 as n=100.
+committee_sizes: [10, 20, 50]
 rates: [100]
 warmup_s: 30
 window_s: 120

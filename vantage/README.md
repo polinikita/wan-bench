@@ -8,7 +8,7 @@ is kept visible so instability is never averaged away.
 | question | folder | config | fleet |
 |---|---|---|---|
 | Throughput and latency versus the baselines at n=100 | `throughput/` | `configs/paper-n100-throughput.yaml` | 100+1 × c5d.2xlarge |
-| Latency, CPU, and wire cost as the committee grows | `committee-scaling/` | `configs/paper-committee-scaling.yaml` | up to 100+1 × c5d.2xlarge |
+| Latency, CPU, and wire cost as the committee grows | `committee-scaling/` | `configs/paper-committee-scaling.yaml` | up to 50+1 × c5d.2xlarge (n=100 joins from the throughput ladder's rate-100 cell) |
 | Behavior under leader-relay faults at n=20 | `leader-relay/` | `configs/n20-leader-relay-scaling.yaml` | 20+1 × c5d.2xlarge |
 
 ## Prerequisites
