@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Targeted knee windows for the two Starfish-artifact baselines on
-# m5d.2xlarge (32 GiB, 300 GB NVMe -- matches the recorded m5d-gc campaign)
-# with the payload-compacted image:
-#   Bluestreak   225k / 250k / 275k
-#   Sailfish++   150k / 170k / 200k
-# Two repetitions by default; the paper reports the median per cell and must
-# disclose the baseline fleet difference.  Invalid prior attempts live in
-# results/vantage/_invalid: the pre-compaction full-ladder rep-1 sweeps (OOM
-# at 200k) and the c5d knee attempt (Bluestreak hit a sub-knee ceiling at
-# 225k with idle CPU and healthy memory).
+# Targeted knee windows for the two Starfish-artifact baselines with the
+# payload-compacted image, each on its measured-best fleet:
+#   Bluestreak   225k / 250k / 275k on m5d.2xlarge (storage-sensitive: c5d
+#                caps it at ~161k with idle cores; m5d reproduces the
+#                recorded m5d-gc knee)
+#   Sailfish++   150k / 170k / 200k on c5d.2xlarge (clock-sensitive: 149.7k
+#                at 150k on c5d vs 93.6k on m5d; c5d is the shared fleet)
+# Two repetitions by default; the paper reports the median per cell and
+# discloses the Bluestreak fleet exception.  Invalid prior attempts live in
+# results/vantage/_invalid: pre-compaction full-ladder sweeps (OOM at 200k),
+# the Bluestreak c5d attempt, and the Sailfish++ m5d attempt.
 #
 #   ./knee.sh             two repetitions (fresh fleet each), skipping done ones
 #   REPS=N ./knee.sh      a different repetition count
