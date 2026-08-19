@@ -7,7 +7,7 @@ is kept visible so instability is never averaged away.
 
 | question | folder | config | fleet |
 |---|---|---|---|
-| Throughput and latency versus the baselines at n=100 | `throughput/` | `configs/paper-n100-throughput.yaml` | 100+1 × c5d.2xlarge |
+| Throughput and latency versus the baselines at n=100 | `throughput/` | `configs/paper-n100-throughput.yaml` | 100+1 × c5d.2xlarge; Starfish baselines via `throughput/knee.sh` on m5d.2xlarge |
 | Latency, CPU, and wire cost as the committee grows | `committee-scaling/` | `configs/paper-committee-scaling.yaml` | up to 50+1 × c5d.2xlarge (n=100 joins from the throughput ladder's rate-100 cell) |
 | Behavior under leader-relay faults at n=20 | `leader-relay/` | `configs/paper-n20-leader-relay-{autobahn,simpleit,vantage}.yaml` | 20+1 × c5d.2xlarge |
 
@@ -46,13 +46,17 @@ again.
 
 ## Instance sizing (measured, not guessed)
 
-Every question runs on c5d.2xlarge (8 vCPU / 16 GB), so all figures share one
-platform. The sizing is dictated by the measured load, not caution: at
-250-275k tx/s the median node needs 3.0-3.2 cores with peaks above 4
-(sailfish-pp needs 4.2 cores at 150k already, vantage itself reaches 3.6 at
-250k) and up to 7.1 GiB of memory (autobahn-seamless at 275k). Lighter
-questions would fit 4 vCPU, but nonuniform hardware would let a reviewer
-attribute cross-protocol differences to provisioning.
+Every shared-binary question runs on c5d.2xlarge (8 vCPU / 16 GB), so those
+figures share one platform. The sizing is dictated by the measured load, not
+caution: at 250-275k tx/s the median node needs 3.0-3.2 cores with peaks
+above 4 (sailfish-pp needs 4.2 cores at 150k already, vantage itself reaches
+3.6 at 250k) and up to 7.1 GiB of memory (autobahn-seamless at 275k).
+Lighter questions would fit 4 vCPU, but nonuniform hardware would let a
+reviewer attribute cross-protocol differences to provisioning.  The one
+disclosed exception is the Starfish-artifact pair: on c5d.2xlarge the
+artifact caps at ~161k tx/s with idle cores and healthy memory, so
+`throughput/knee.sh` measures Bluestreak and Sailfish++ on m5d.2xlarge
+(equal vCPUs, 32 GiB, 300 GB NVMe) — stronger instances than Vantage's own.
 
 ## Metrics
 
