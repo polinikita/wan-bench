@@ -21,7 +21,7 @@ REPS="${REPS:-3}"
 UNITS=(
     "throughput:configs/paper-n100-throughput.yaml:808"
     "committee-scaling:configs/paper-committee-scaling.yaml:808"
-    "leader-relay:configs/n20-leader-relay-scaling.yaml:168"
+    "leader-relay:TRIO:168"
 )
 
 declare -a run_pids run_cost run_name
@@ -29,9 +29,20 @@ used=0
 
 # Terminal campaign states; anything else in an existing directory resumes.
 rep_status() {
-    python3 -c 'import json,sys
-try: print(json.load(open(sys.argv[1] + "/campaign.json")).get("status", "absent"))
-except OSError: print("absent")' "$1"
+    python3 -c 'import json, sys, pathlib
+root = pathlib.Path(sys.argv[1])
+def one(d):
+    for f in ("campaign.json", "matrix.json"):
+        try: return json.load(open(d / f)).get("status", "absent")
+        except OSError: pass
+    return "absent"
+subs = [d for d in root.glob("*/") if (d / "campaign.json").exists()]
+if subs:
+    states = {one(d) for d in subs}
+    print("completed" if states <= {"completed", "completed_with_failures"} and len(subs) >= 3
+          else "partial")
+else:
+    print(one(root))' "$1"
 }
 
 launch() {
@@ -41,9 +52,14 @@ launch() {
     [ -d "$out" ] && resume=(--resume)
     mkdir -p "results/vantage/$question"
     echo "run-all: launching $question rep-$rep ${resume[0]:-} (+$cost vCPU, $((used + cost))/$VCPU_CAP)"
-    python3 -m wanbench.cli campaign --config "$config" --out "$out" --execute \
-        ${resume[@]+"${resume[@]}"} \
-        >> "results/vantage/$question/rep-$rep.log" 2>&1 &
+    if [ "$config" = "TRIO" ]; then
+        env REPS="$rep" bash "vantage/$question/run.sh" \
+            >> "results/vantage/$question/rep-$rep.log" 2>&1 &
+    else
+        python3 -m wanbench.cli campaign --config "$config" --out "$out" --execute \
+            ${resume[@]+"${resume[@]}"} \
+            >> "results/vantage/$question/rep-$rep.log" 2>&1 &
+    fi
     run_pids+=($!)
     run_cost+=("$cost")
     run_name+=("$question rep-$rep")

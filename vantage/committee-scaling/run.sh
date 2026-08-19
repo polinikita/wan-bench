@@ -23,8 +23,11 @@ mkdir -p "$OUT_BASE"
 for rep in $(seq 1 "$REPS"); do
     out="$OUT_BASE/rep-$rep"
     status=$(python3 -c 'import json,sys
-try: print(json.load(open(sys.argv[1] + "/campaign.json")).get("status", "absent"))
-except OSError: print("absent")' "$out")
+for f in ("campaign.json", "matrix.json"):
+    try:
+        print(json.load(open(sys.argv[1] + "/" + f)).get("status", "absent")); break
+    except OSError: pass
+else: print("absent")' "$out")
     case "$status" in
         completed|completed_with_failures)
             echo "run.sh: $out is $status, skipping (delete it to rerun)"
