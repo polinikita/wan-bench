@@ -59,13 +59,19 @@ variants:
 
   - name: autobahn-optimistic-a2a
     protocol: autobahn-optimistic
-    image: *vantage_image
+    # Autobahn's n=100 startup wedges nondeterministically on the current
+    # stack (fleet-correlated; 3 of 4 fleets); it runs on its last image
+    # proven at this scale until the startup race is root-caused.
+    image: ghcr.io/polinikita/vantage-node@sha256:21fc32aabbddee2c547b9ad262bf8d2694a482a7baefc217f45e2e2e7eadcf50
     metrics_port: 6003
     all_to_all: true
 
   - name: autobahn-seamless
     protocol: autobahn-seamless
-    image: *vantage_image
+    # Autobahn's n=100 startup wedges nondeterministically on the current
+    # stack (fleet-correlated; 3 of 4 fleets); it runs on its last image
+    # proven at this scale until the startup race is root-caused.
+    image: ghcr.io/polinikita/vantage-node@sha256:21fc32aabbddee2c547b9ad262bf8d2694a482a7baefc217f45e2e2e7eadcf50
     metrics_port: 6003
 
   - name: simpleit-optrbc
