@@ -577,6 +577,41 @@ class MatrixExecutionTests(unittest.TestCase):
         self.assertNotIn(b"\r\n", (out / "points.csv").read_bytes())
         self.assertTrue((out / "README.md").is_file())
 
+    def test_variant_failures_propagate_to_matrix_and_results(self):
+        out = Path(self.tmp.name) / "out"
+        first_variant = self.groups[0][2][0][0]
+
+        def fake_execute(child, configs, outdir, resume=False):
+            child_out = Path(outdir)
+            child_out.mkdir(parents=True, exist_ok=True)
+            variants = [
+                {
+                    "name": name,
+                    "status": "failed" if name == first_variant else "completed",
+                    "error": "wedged" if name == first_variant else None,
+                }
+                for name, _cfg in configs
+            ]
+            (child_out / "campaign.json").write_text(
+                json.dumps({"variants": variants}))
+            return {"status": "completed_with_failures", "variants": variants}
+
+        with patch.object(matrix_mod, "execute", side_effect=fake_execute):
+            state = matrix_mod.execute_matrix(
+                self.campaign, self.groups, str(out))
+
+        self.assertEqual(state["status"], "completed_with_failures")
+        self.assertEqual(
+            state["committees"][0]["status"], "completed_with_failures")
+        self.assertIn(
+            first_variant, state["committees"][0]["failed_variants"])
+        csv_text = (out / "points.csv").read_text()
+        self.assertIn("failed", csv_text)
+        self.assertIn(first_variant, csv_text)
+        readme = (out / "README.md").read_text()
+        self.assertIn("## Failed variants", readme)
+        self.assertIn("wedged", readme)
+
     def test_matrix_failure_is_checkpointed_before_larger_committee(self):
         out = Path(self.tmp.name) / "out"
         with patch.object(matrix_mod, "execute",

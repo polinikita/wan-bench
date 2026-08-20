@@ -132,7 +132,7 @@ _COLUMNS = (
     "tps_median", "tps_min",
     "material_p50_ms_since_start", "material_p99_ms_since_start",
     "cpu_cores_p50", "wire_mb_per_s_p50", "bandwidth_efficiency_p50",
-    "estimated_non_payload_bytes_per_tx_p50",
+    "estimated_non_payload_bytes_per_tx_p50", "status",
 )
 
 
@@ -140,18 +140,37 @@ def _write_results(out: pathlib.Path, campaign: CampaignConfig,
                    groups: list[MatrixGroup], state: dict) -> None:
     """Combine completed point summaries into paper-friendly files."""
     rows = []
+    failed_variants = []
     for nodes, _child, configs in groups:
+        campaign_path = out / f"n-{nodes}" / "campaign.json"
+        variant_states = {}
+        if campaign_path.is_file():
+            child = json.loads(campaign_path.read_text())
+            variant_states = {
+                item["name"]: item for item in child.get("variants", [])
+            }
         for variant, _cfg in configs:
             path = out / f"n-{nodes}" / variant / "sweep.json"
-            if not path.is_file():
-                continue
-            sweep = json.loads(path.read_text())
-            for point in sweep.get("points", []):
+            if path.is_file():
+                sweep = json.loads(path.read_text())
+                for point in sweep.get("points", []):
+                    rows.append({
+                        "nodes": nodes,
+                        "variant": variant,
+                        **{key: point.get(key) for key in _COLUMNS
+                           if key not in {"nodes", "variant", "status"}},
+                        "status": "ok",
+                    })
+            # A variant with zero completed points must still leave a row;
+            # silently omitting it once hid a full protocol wedge.
+            item = variant_states.get(variant, {})
+            if item.get("status") == "failed":
+                failed_variants.append((nodes, variant, item.get("error")))
                 rows.append({
+                    **{key: None for key in _COLUMNS},
                     "nodes": nodes,
                     "variant": variant,
-                    **{key: point.get(key) for key in _COLUMNS
-                       if key not in {"nodes", "variant"}},
+                    "status": "failed",
                 })
 
     (out / "points.json").write_text(json.dumps(rows, indent=2, allow_nan=False))
@@ -192,6 +211,12 @@ def _write_results(out: pathlib.Path, campaign: CampaignConfig,
         lines.append(
             "| -- | No completed points | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |"
         )
+    if failed_variants:
+        lines += ["", "## Failed variants", ""]
+        lines += [
+            f"- n={nodes} {variant}: {error or 'no error recorded'}"
+            for nodes, variant, error in failed_variants
+        ]
     lines += ["", "## Fleet status", ""]
     lines += [f"- n={nodes}: {status_by_nodes.get(nodes, 'pending')}"
               for nodes in campaign.committee_sizes]
@@ -226,7 +251,7 @@ def execute_matrix(campaign: CampaignConfig, groups: list[MatrixGroup],
             _checkpoint(state_path, state)
             child_out = out / entry["output"]
             try:
-                execute(
+                child_state = execute(
                     child,
                     configs,
                     str(child_out),
@@ -237,11 +262,20 @@ def execute_matrix(campaign: CampaignConfig, groups: list[MatrixGroup],
                 entry["error"] = f"{type(exc).__name__}: {exc}"
                 raise
             else:
-                entry["status"] = "completed"
-                entry["error"] = None
+                # A per-variant failure inside the child campaign must stay
+                # visible here: flattening it to "completed" once misread a
+                # full Autobahn n=50/100 wedge as an all-green matrix.
+                entry["status"] = child_state.get("status", "completed")
+                failed = [variant["name"]
+                          for variant in child_state.get("variants", [])
+                          if variant.get("status") == "failed"]
+                entry["failed_variants"] = failed
+                entry["error"] = (
+                    f"failed variant(s): {', '.join(failed)}" if failed else None)
                 _checkpoint(state_path, state)
                 _write_results(out, campaign, groups, state)
-                print(f"campaign: completed n={nodes}; fleet torn down", flush=True)
+                print(f"campaign: {entry['status']} n={nodes}; fleet torn down",
+                      flush=True)
     except BaseException as exc:
         state["status"] = "failed"
         state["error"] = f"{type(exc).__name__}: {exc}"
@@ -249,7 +283,10 @@ def execute_matrix(campaign: CampaignConfig, groups: list[MatrixGroup],
         _write_results(out, campaign, groups, state)
         raise
 
-    state["status"] = "completed"
+    state["status"] = (
+        "completed_with_failures"
+        if any(entry["status"] != "completed" for entry in state["committees"])
+        else "completed")
     state["error"] = None
     state["finished_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     _checkpoint(state_path, state)
