@@ -173,13 +173,11 @@ class PaperThroughputCampaignTests(unittest.TestCase):
             campaign.rates,
             [100, 10_000, 150_000, 200_000, 225_000, 250_000, 275_000, 300_000],
         )
-        # The optimistic variant resolves its own knee between 10k and 150k.
-        self.assertEqual(
-            campaign.rates_for("autobahn-optimistic-a2a"),
-            [100, 10_000, 50_000, 100_000, 150_000, 200_000, 225_000,
-             250_000, 275_000, 300_000],
-        )
-        self.assertEqual(campaign.rates_for("autobahn-seamless"), campaign.rates)
+        # Every protocol shares one ladder, so the figure's x-points align.
+        # The optimistic variant's knee was probed separately and sits above
+        # 150k, so it needs no extra rungs of its own.
+        for name, _cfg in configs:
+            self.assertEqual(campaign.rates_for(name), campaign.rates, name)
         # The knee costs one fleet-run, a rung below it may be retried once.
         self.assertEqual(campaign.point_attempts, 2)
         self.assertEqual(campaign.terminal_point_attempts, 1)

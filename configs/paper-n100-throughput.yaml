@@ -65,11 +65,10 @@ variants:
     image: *vantage_image
     metrics_port: 6003
     all_to_all: true
-    # This variant has never held an accepted point above 10k at n=100 on any
-    # image, so its knee is unmeasured rather than merely unplotted. The 50k
-    # and 100k rungs resolve it; the campaign ladder resumes at 150k so the
-    # accepted points stay comparable with every other protocol.
-    rates: [100, 10000, 50000, 100000, 150000, 200000, 225000, 250000, 275000, 300000]
+    # Knee-probed on this image (results/probe-n100-autobahn-knee): accepted at
+    # 100k, 120k and 150k with p50 flat at 590-601 ms, so there is no knee below
+    # 150k to resolve and the variant shares the campaign ladder. Keeping one
+    # ladder for every protocol also keeps the figure's x-points aligned.
 
   - name: autobahn-seamless
     protocol: autobahn-seamless
