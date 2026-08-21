@@ -52,30 +52,34 @@ base:
 variants:
   - name: vantage
     protocol: vantage
-    image: ghcr.io/polinikita/vantage-node@sha256:a8497560d6e199eb1012231371fb3171393d23f9dbee11e9b98f6b119a58bd95
+    # Vantage commit 175c0ba5f6ec203dad2cae877e860f3eb7a2ffc7. The five
+    # variants below share one Rust binary, so they must share this one
+    # digest: pinning them apart turns a protocol comparison into a build
+    # comparison. Re-pin here only.
+    image: &vantage_image ghcr.io/polinikita/vantage-node@sha256:a8497560d6e199eb1012231371fb3171393d23f9dbee11e9b98f6b119a58bd95
     metrics_port: 6003
     echo_avail_claims: true
     vantage_compact_ids: true
 
   - name: autobahn-optimistic-a2a
     protocol: autobahn-optimistic
-    image: ghcr.io/polinikita/vantage-node@sha256:a8497560d6e199eb1012231371fb3171393d23f9dbee11e9b98f6b119a58bd95
+    image: *vantage_image
     metrics_port: 6003
     all_to_all: true
 
   - name: autobahn-seamless
     protocol: autobahn-seamless
-    image: ghcr.io/polinikita/vantage-node@sha256:a8497560d6e199eb1012231371fb3171393d23f9dbee11e9b98f6b119a58bd95
+    image: *vantage_image
     metrics_port: 6003
 
   - name: simpleit-optrbc
     protocol: simple-it
-    image: ghcr.io/polinikita/vantage-node@sha256:a8497560d6e199eb1012231371fb3171393d23f9dbee11e9b98f6b119a58bd95
+    image: *vantage_image
     metrics_port: 6003
 
   - name: simpleit-bracha
     protocol: simple-it-bracha
-    image: ghcr.io/polinikita/vantage-node@sha256:a8497560d6e199eb1012231371fb3171393d23f9dbee11e9b98f6b119a58bd95
+    image: *vantage_image
     metrics_port: 6003
 
   - name: bluestreak

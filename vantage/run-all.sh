@@ -20,7 +20,7 @@ REPS="${REPS:-3}"
 # question:config:peak_vcpus  (fleet+control at 8 vCPU each), longest first.
 UNITS=(
     "throughput:configs/paper-n100-throughput.yaml:808"
-    "committee-scaling:configs/paper-committee-scaling.yaml:808"
+    "committee-scaling:configs/paper-committee-scaling.yaml:408"
     "leader-relay:TRIO:168"
 )
 
