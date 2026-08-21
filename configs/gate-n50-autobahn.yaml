@@ -1,0 +1,73 @@
+# Pre-campaign gate: does the crash-free wedge survive on real WAN?
+#
+# The n=50 committee point is the cheapest reproducer of the Autobahn wedge
+# (a2a stalled 4 of 50 validators, seamless all 50) and therefore the cheapest
+# proof that it is gone. It deliberately mirrors paper-committee-scaling.yaml
+# point-for-point so a pass here predicts that campaign's n=50 cell.
+#
+# The image is built on the control host from the local vantage checkout's HEAD
+# and served from a private registry on that host, so this gate needs no GHCR
+# publish and cannot move the shared `:latest` tag. The paper campaign still
+# needs an immutable public digest; this only answers "is the fix real on WAN".
+name: gate-n50-autobahn
+output: results/gate-n50-autobahn
+committee_sizes: [50]
+rates: [100]
+warmup_s: 30
+window_s: 120
+drop_tolerance_pct: 5
+stop_on_drop: true
+# One retry, because a flaky fleet here would read as "the fix failed".
+point_attempts: 2
+terminal_point_attempts: 1
+min_offered_throughput_pct: 95
+
+base:
+  region: eu-west-1
+  profile: null
+  az: eu-west-1a
+  instance_type: c5d.2xlarge
+  key_name: wanbench-key
+  ssh_key_path: ~/.ssh/id_ed25519_nikita_iota6
+  ssh_user: ubuntu
+  ssh_open_cidr: null
+  spot: false
+  disk_gb: 50
+  use_instance_store: true
+  keep_monitoring_on_down: false
+  grafana_open_cidr: null
+  deadman_minutes: 60
+
+  tx_size: 512
+  tx_mode: random
+  delta_ms: 200
+  max_header_delay_ms: 100
+  spam_initial_delay_ms: 10000
+  spam_delay_per_node_ms: 200
+  spam_lead_ms: 25000
+  prometheus_scrape_interval_s: 5
+
+  image: wanbench-node:gate-autobahn
+  image_source: build-on-control
+  build_repo: /Users/nikitapolianskii/code/vantage
+  build_dockerfile: docker-bench/Dockerfile
+
+  wan:
+    mode: netem
+    rtt_csv: latency/aws-10region-rtt.csv
+    jitter_ms: 0.0
+    halve_rtt: true
+    netem_limit_pkts: 100000
+
+  fault:
+    kind: none
+
+variants:
+  - name: autobahn-optimistic-a2a
+    protocol: autobahn-optimistic
+    metrics_port: 6003
+    all_to_all: true
+
+  - name: autobahn-seamless
+    protocol: autobahn-seamless
+    metrics_port: 6003
