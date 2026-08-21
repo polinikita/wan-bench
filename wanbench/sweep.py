@@ -56,6 +56,7 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
           sweep_field: str = "rate",
           warmup_s: int = WARMUP_S, window_s: int = WINDOW_S,
           point_attempts: int = 2,
+          terminal_point_attempts: int = 1,
           drop_tolerance_pct: float = DROP_TOLERANCE_PCT,
           stop_on_drop: bool = True,
           strict_through_rate: int | None = None,
@@ -95,6 +96,10 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
         raise ValueError(f"sweep window must be > 0, got {window_s}")
     if point_attempts < 1:
         raise ValueError(f"sweep point_attempts must be >= 1, got {point_attempts}")
+    if terminal_point_attempts < 1:
+        raise ValueError(
+            "sweep terminal_point_attempts must be >= 1, "
+            f"got {terminal_point_attempts}")
     if not 0 <= drop_tolerance_pct < 100:
         raise ValueError(
             f"sweep drop tolerance must be in [0, 100), got {drop_tolerance_pct}")
@@ -172,10 +177,8 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                 # Renew orphan protection before each point.
                 prepare.arm_deadman(ssh, hosts + [control], cfg.deadman_minutes,
                                     quiet=True)
-                attempts_left = point_attempts
                 attempt = 0
                 while True:
-                    attempts_left -= 1
                     attempt += 1
                     point_stem = f"{sweep_field.replace('_', '-')}-{sweep_value}"
                     point_dir = (point_stem if attempt == 1
@@ -243,7 +246,13 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                         if not captured_failure:
                             dump_failure_scrapes(ssh, cfg, control, hosts,
                                                  str(out / point_dir), "failure")
-                        if attempts_left <= 0:
+                        # A failure above an already accepted rate is the ladder's
+                        # terminal point: retrying it buys another identical
+                        # fleet-run of the same overload, so it gets its own
+                        # (normally single) attempt budget.
+                        allowed = (terminal_point_attempts if result["points"]
+                                   else point_attempts)
+                        if attempt >= allowed:
                             # stop_on_drop governs whether the ladder ends early. A point
                             # that exhausts its attempts is the strongest form of drop, so
                             # honour the same switch: raising here would discard every
@@ -262,8 +271,8 @@ def sweep(cfg: RunConfig, rates: list[int], outdir: str,
                             point_failed = True
                             break
                         print(f"sweep: point {sweep_field}={sweep_value:,} failed "
-                              f"({exc}); retrying "
-                              f"once with a full node reset", flush=True)
+                              f"({exc}); retrying (attempt {attempt + 1} of "
+                              f"{allowed}) with a full node reset", flush=True)
                 measure_s = timing.since(measure_start)
                 result["timeline"]["points"].append(
                     {sweep_field: sweep_value, "rate": cfg.rate,

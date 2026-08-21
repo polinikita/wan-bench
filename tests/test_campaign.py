@@ -1,3 +1,4 @@
+import copy
 import json
 import tempfile
 import unittest
@@ -170,8 +171,18 @@ class PaperThroughputCampaignTests(unittest.TestCase):
         self.assertEqual(campaign.committee_sizes, [100])
         self.assertEqual(
             campaign.rates,
-            [100, 10_000, 150_000, 200_000, 225_000, 250_000, 275_000],
+            [100, 10_000, 150_000, 200_000, 225_000, 250_000, 275_000, 300_000],
         )
+        # The optimistic variant resolves its own knee between 10k and 150k.
+        self.assertEqual(
+            campaign.rates_for("autobahn-optimistic-a2a"),
+            [100, 10_000, 50_000, 100_000, 150_000, 200_000, 225_000,
+             250_000, 275_000, 300_000],
+        )
+        self.assertEqual(campaign.rates_for("autobahn-seamless"), campaign.rates)
+        # The knee costs one fleet-run, a rung below it may be retried once.
+        self.assertEqual(campaign.point_attempts, 2)
+        self.assertEqual(campaign.terminal_point_attempts, 1)
         self.assertEqual(campaign.strict_through_rate, 10_000)
         self.assertEqual(campaign.min_offered_throughput_pct, 95)
         self.assertEqual(
@@ -193,6 +204,19 @@ class PaperThroughputCampaignTests(unittest.TestCase):
             self.assertTrue(cfg.use_instance_store)
             self.assertIn("@sha256:", cfg.image)
         self.assertTrue(configs[0][1].vantage_compact_ids)
+
+        # All five variants that share one Rust binary must also share one
+        # image digest: a per-variant pin silently turns a protocol comparison
+        # into a build comparison.
+        shared_binary = {
+            name: cfg.image for name, cfg in configs
+            if name in {"vantage", "autobahn-optimistic-a2a", "autobahn-seamless",
+                        "simpleit-optrbc", "simpleit-bracha"}
+        }
+        self.assertEqual(len(shared_binary), 5)
+        self.assertEqual(
+            len(set(shared_binary.values())), 1,
+            f"shared-binary variants disagree on their image: {shared_binary}")
 
 
 class DataLaneDropCampaignTests(unittest.TestCase):
@@ -534,6 +558,62 @@ class CampaignExecutionTests(unittest.TestCase):
                 self.campaign, self.configs, str(Path(self.tmp.name) / "out"))
         self.assertEqual(sweep.call_count, 2)
         self.assertEqual(state["status"], "completed")
+
+
+class PerVariantRatesTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        Path(self.tmp.name, "key").write_text("test")
+        self.manifest = yaml.safe_load(campaign_yaml(str(Path(self.tmp.name) / "key")))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _load(self, manifest):
+        path = Path(self.tmp.name) / "c.yaml"
+        path.write_text(yaml.safe_dump(manifest, sort_keys=False))
+        return CampaignConfig.load(str(path))
+
+    def test_variant_ladder_overrides_only_that_variant(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest["rates"] = [200, 400]
+        manifest["variants"][0]["rates"] = [200, 300, 400]
+        campaign = self._load(manifest)
+        first, second = (v["name"] for v in manifest["variants"][:2])
+        self.assertEqual(campaign.rates_for(first), [200, 300, 400])
+        self.assertEqual(campaign.rates_for(second), [200, 400])
+        # The override is not mistaken for a RunConfig field.
+        self.assertNotIn("rates", campaign.variants[0].overrides)
+
+    def test_variant_ladder_is_validated_like_the_campaign_ladder(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest["variants"][0]["rates"] = [400, 200]
+        with self.assertRaisesRegex(ValueError, "strictly increasing"):
+            self._load(manifest)
+        manifest["variants"][0]["rates"] = [0]
+        with self.assertRaisesRegex(ValueError, "positive integers"):
+            self._load(manifest)
+        manifest["variants"][0]["rates"] = [201]
+        with self.assertRaisesRegex(ValueError, "invalid"):
+            self._load(manifest)
+
+    def test_definition_records_the_per_variant_ladder(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest["rates"] = [200, 400]
+        manifest["variants"][0]["rates"] = [200, 300, 400]
+        campaign = self._load(manifest)
+        definition = campaign_mod._definition(campaign, campaign.configs())
+        recorded = {v["name"]: v["rates"] for v in definition["variants"]}
+        self.assertEqual(recorded[campaign.variants[0].name], [200, 300, 400])
+        self.assertEqual(recorded[campaign.variants[1].name], [200, 400])
+
+    def test_terminal_point_attempts_defaults_to_one_and_is_validated(self):
+        campaign = self._load(copy.deepcopy(self.manifest))
+        self.assertEqual(campaign.terminal_point_attempts, 1)
+        manifest = copy.deepcopy(self.manifest)
+        manifest["terminal_point_attempts"] = 0
+        with self.assertRaisesRegex(ValueError, "terminal_point_attempts"):
+            self._load(manifest)
 
 
 class MatrixExecutionTests(unittest.TestCase):

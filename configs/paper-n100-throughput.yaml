@@ -6,9 +6,12 @@ warmup_s: 30
 window_s: 120
 drop_tolerance_pct: 5
 stop_on_drop: true
-# Three repetitions supersede intra-repetition retries: a flaky point is
-# outvoted by the cross-repetition median instead of rerun on the same fleet.
-point_attempts: 1
+# A rung below the knee may fail on infrastructure, and losing it truncates the
+# whole ladder, so those get one retry. A failure above an already accepted rate
+# is the knee itself: retrying buys an identical second overload run, so the
+# terminal point is measured exactly once.
+point_attempts: 2
+terminal_point_attempts: 1
 strict_through_rate: 10000
 min_offered_throughput_pct: 95
 
@@ -59,23 +62,18 @@ variants:
 
   - name: autobahn-optimistic-a2a
     protocol: autobahn-optimistic
-    # Autobahn primaries wedge at startup on the current stack with per-node
-    # probability growing in the committee size (none at n<=20, partial at
-    # n=50, near-total at n=100; reproduced on four fleets). It runs on its
-    # last image proven at this scale until the startup race is root-caused;
-    # evidence bundle: ~/autobahn-n100-hang-evidence-20260820.tar.zst.
-    image: ghcr.io/polinikita/vantage-node@sha256:21fc32aabbddee2c547b9ad262bf8d2694a482a7baefc217f45e2e2e7eadcf50
+    image: *vantage_image
     metrics_port: 6003
     all_to_all: true
+    # This variant has never held an accepted point above 10k at n=100 on any
+    # image, so its knee is unmeasured rather than merely unplotted. The 50k
+    # and 100k rungs resolve it; the campaign ladder resumes at 150k so the
+    # accepted points stay comparable with every other protocol.
+    rates: [100, 10000, 50000, 100000, 150000, 200000, 225000, 250000, 275000, 300000]
 
   - name: autobahn-seamless
     protocol: autobahn-seamless
-    # Autobahn primaries wedge at startup on the current stack with per-node
-    # probability growing in the committee size (none at n<=20, partial at
-    # n=50, near-total at n=100; reproduced on four fleets). It runs on its
-    # last image proven at this scale until the startup race is root-caused;
-    # evidence bundle: ~/autobahn-n100-hang-evidence-20260820.tar.zst.
-    image: ghcr.io/polinikita/vantage-node@sha256:21fc32aabbddee2c547b9ad262bf8d2694a482a7baefc217f45e2e2e7eadcf50
+    image: *vantage_image
     metrics_port: 6003
 
   - name: simpleit-optrbc

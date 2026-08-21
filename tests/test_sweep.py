@@ -474,6 +474,73 @@ class SweepTests(unittest.TestCase):
         self.assertEqual(deploy.call_count, 2)
         self.assertEqual(reset.call_count, 2)
 
+    def test_terminal_point_is_measured_once_while_earlier_rungs_retry(self):
+        """A failure above an accepted rate is the knee, not a flaky fleet."""
+        cfg = RunConfig(nodes=2, rate=100, image="image")
+        calls = []
+
+        def by_rate(ssh, run_cfg, *args, **kwargs):
+            calls.append(run_cfg.rate)
+            if run_cfg.rate == 100:
+                return summary(100, 100.0)
+            raise RuntimeError(
+                "node(s) [1] committed nothing during measurement")
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(sweep_mod, "up",
+                          return_value=(object(), self.ssh, self.hosts, object())), \
+             patch.object(sweep_mod, "generate_keys", return_value=[]), \
+             patch.object(sweep_mod, "_reset_nodes"), \
+             patch.object(sweep_mod, "deploy"), \
+             patch.object(sweep_mod, "collect", side_effect=by_rate), \
+             patch.object(sweep_mod, "dump_failure_scrapes"), \
+             patch.object(sweep_mod.faults, "clear"), \
+             patch.object(sweep_mod.prepare, "clear_wan"), \
+             patch.object(sweep_mod, "down"):
+            with self.assertRaises(RuntimeError):
+                sweep_mod.sweep(cfg, [100, 200], tmp, warmup_s=0, window_s=1,
+                                point_attempts=2, terminal_point_attempts=1,
+                                stop_on_drop=True)
+
+        # 100 accepted on its first attempt; 200 tried exactly once despite
+        # point_attempts=2, because the ladder already had an accepted point.
+        self.assertEqual(calls, [100, 200])
+
+    def test_first_rung_still_uses_the_full_attempt_budget(self):
+        """With no accepted point yet, a failure is treated as infrastructure."""
+        cfg = RunConfig(nodes=2, rate=100, image="image")
+        attempts = []
+
+        def flaky(*args, **kwargs):
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise RuntimeError(
+                    "node(s) [1] committed nothing during measurement")
+            return summary(100, 100.0)
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(sweep_mod, "up",
+                          return_value=(object(), self.ssh, self.hosts, object())), \
+             patch.object(sweep_mod, "generate_keys", return_value=[]), \
+             patch.object(sweep_mod, "_reset_nodes"), \
+             patch.object(sweep_mod, "deploy"), \
+             patch.object(sweep_mod, "collect", side_effect=flaky), \
+             patch.object(sweep_mod, "dump_failure_scrapes"), \
+             patch.object(sweep_mod.faults, "clear"), \
+             patch.object(sweep_mod.prepare, "clear_wan"), \
+             patch.object(sweep_mod, "down"):
+            result = sweep_mod.sweep(cfg, [100], tmp, warmup_s=0, window_s=1,
+                                     point_attempts=2, terminal_point_attempts=1)
+
+        self.assertEqual(len(result["points"]), 1)
+        self.assertEqual(len(attempts), 2)
+
+    def test_terminal_point_attempts_must_be_positive(self):
+        cfg = RunConfig(nodes=2, rate=100, image="image")
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError, "terminal_point_attempts"):
+                sweep_mod.sweep(cfg, [100], tmp, terminal_point_attempts=0)
+
     def test_deploy_timeout_retries_the_full_point(self):
         cfg = RunConfig(nodes=2, rate=100, image="image")
         with tempfile.TemporaryDirectory() as tmp, \

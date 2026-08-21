@@ -42,6 +42,10 @@ _VARIANT_FIELDS = frozenset({
 class CampaignVariant:
     name: str
     overrides: dict
+    #: Per-variant rate ladder. ``None`` means "use the campaign ladder".
+    #: A variant whose knee sits between two campaign rungs needs its own
+    #: resolution without forcing the extra points on every other protocol.
+    rates: list[int] | None = None
 
 
 @dataclass(frozen=True)
@@ -55,6 +59,7 @@ class CampaignConfig:
     drop_tolerance_pct: float
     stop_on_drop: bool
     point_attempts: int
+    terminal_point_attempts: int
     strict_through_rate: int | None
     min_offered_throughput_pct: float | None
     committee_sizes: list[int]
@@ -68,7 +73,8 @@ class CampaignConfig:
             raise ValueError("campaign config must be a mapping")
         allowed = {
             "name", "output", "sweep_field", "rates", "warmup_s", "window_s",
-            "drop_tolerance_pct", "stop_on_drop", "point_attempts", "strict_through_rate",
+            "drop_tolerance_pct", "stop_on_drop", "point_attempts",
+            "terminal_point_attempts", "strict_through_rate",
             "min_offered_throughput_pct",
             "committee_sizes",
             "base", "variants",
@@ -111,13 +117,13 @@ class CampaignConfig:
         if sweep_field not in ("rate", "adversarial_rate"):
             raise ValueError(
                 "campaign: sweep_field must be 'rate' or 'adversarial_rate'")
+        qualifier = ("non-negative" if sweep_field == "adversarial_rate"
+                     else "positive")
         rates = raw.get("rates")
         if (not isinstance(rates, list) or not rates or
                 any(type(rate) is not int or
                     (rate < 0 if sweep_field == "adversarial_rate" else rate <= 0)
                     for rate in rates)):
-            qualifier = ("non-negative" if sweep_field == "adversarial_rate"
-                         else "positive")
             raise ValueError(f"campaign: rates must be {qualifier} integers")
         if rates != sorted(set(rates)):
             raise ValueError("campaign: rates must be strictly increasing")
@@ -129,14 +135,29 @@ class CampaignConfig:
             variant_name = item.get("name", "")
             if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", variant_name):
                 raise ValueError(f"campaign: invalid variant name {variant_name!r}")
-            unknown = sorted(set(item) - {"name"} - _VARIANT_FIELDS)
+            unknown = sorted(set(item) - {"name", "rates"} - _VARIANT_FIELDS)
             if unknown:
                 raise ValueError(
                     f"campaign variant {variant_name}: unsupported fields {unknown}")
+            variant_rates = item.get("rates")
+            if variant_rates is not None:
+                if (not isinstance(variant_rates, list) or not variant_rates or
+                        any(type(rate) is not int or
+                            (rate < 0 if sweep_field == "adversarial_rate"
+                             else rate <= 0)
+                            for rate in variant_rates)):
+                    raise ValueError(
+                        f"campaign variant {variant_name}: rates must be "
+                        f"{qualifier} integers")
+                if variant_rates != sorted(set(variant_rates)):
+                    raise ValueError(
+                        f"campaign variant {variant_name}: rates must be "
+                        "strictly increasing")
             variants.append(CampaignVariant(
                 variant_name,
                 {key: copy.deepcopy(value) for key, value in item.items()
-                 if key != "name"},
+                 if key not in ("name", "rates")},
+                copy.deepcopy(variant_rates),
             ))
         names = [variant.name for variant in variants]
         if not names:
@@ -164,6 +185,11 @@ class CampaignConfig:
         point_attempts = raw.get("point_attempts", 2)
         if type(point_attempts) is not int or point_attempts < 1:
             raise ValueError("campaign: point_attempts must be an int >= 1")
+        terminal_point_attempts = raw.get("terminal_point_attempts", 1)
+        if (type(terminal_point_attempts) is not int or
+                terminal_point_attempts < 1):
+            raise ValueError(
+                "campaign: terminal_point_attempts must be an integer >= 1")
         strict_through_rate = raw.get("strict_through_rate")
         if (strict_through_rate is not None and
                 (type(strict_through_rate) is not int or strict_through_rate <= 0)):
@@ -189,6 +215,7 @@ class CampaignConfig:
             drop_tolerance_pct=drop_tolerance_pct,
             stop_on_drop=stop_on_drop,
             point_attempts=point_attempts,
+            terminal_point_attempts=terminal_point_attempts,
             strict_through_rate=strict_through_rate,
             min_offered_throughput_pct=min_offered_throughput_pct,
             committee_sizes=committee_sizes,
@@ -198,6 +225,13 @@ class CampaignConfig:
         for nodes in campaign.committee_sizes:
             campaign.configs(nodes=nodes)
         return campaign
+
+    def rates_for(self, variant_name: str) -> list[int]:
+        """The rate ladder a variant sweeps: its own override, else the campaign's."""
+        for variant in self.variants:
+            if variant.name == variant_name:
+                return list(variant.rates) if variant.rates else list(self.rates)
+        raise ValueError(f"campaign: unknown variant {variant_name}")
 
     def configs(self, only: set[str] | None = None,
                 nodes: int | None = None) -> list[tuple[str, RunConfig]]:
@@ -228,7 +262,7 @@ class CampaignConfig:
             if cfg.fault.kind != "none":
                 raise ValueError("campaign variants cannot inject faults")
             invalid = []
-            for value in self.rates:
+            for value in (variant.rates or self.rates):
                 probe = copy.deepcopy(cfg)
                 setattr(probe, self.sweep_field, value)
                 try:
@@ -291,8 +325,9 @@ def preflight(campaign: CampaignConfig, only: set[str] | None = None) -> tuple[
     first = configs[0][1]
 
     aws_report = Aws(first).preflight()
-    measured_s = len(configs) * len(campaign.rates) * (
-        campaign.warmup_s + campaign.window_s)
+    measured_s = sum(
+        len(campaign.rates_for(name)) for name, _cfg in configs
+    ) * (campaign.warmup_s + campaign.window_s)
     report = {
         **aws_report,
         "name": campaign.name,
@@ -303,6 +338,11 @@ def preflight(campaign: CampaignConfig, only: set[str] | None = None) -> tuple[
         "az": first.az or "auto-select one AZ",
         "sweep_field": campaign.sweep_field,
         "rates": campaign.rates,
+        "variant_rates": {
+            name: campaign.rates_for(name)
+            for name, _cfg in configs
+            if campaign.rates_for(name) != campaign.rates
+        },
         "warmup_s": campaign.warmup_s,
         "window_s": campaign.window_s,
         "stop_on_drop": campaign.stop_on_drop,
@@ -334,6 +374,8 @@ def print_plan(report: dict) -> None:
     print(f"variants: {', '.join(report['variants'])}")
     print(f"{report['sweep_field']}: "
           f"{','.join(str(rate) for rate in report['rates'])} tx/s")
+    for name, rates in (report.get("variant_rates") or {}).items():
+        print(f"  {name}: {','.join(str(rate) for rate in rates)} tx/s")
     print(f"timing: {report['warmup_s']}s warmup + {report['window_s']}s window; "
           f"at least {hours:.1f}h total")
     strict = report["strict_through_rate"]
@@ -376,8 +418,12 @@ def _definition(campaign: CampaignConfig,
         "stop_on_drop": campaign.stop_on_drop,
         "strict_through_rate": campaign.strict_through_rate,
         "min_offered_throughput_pct": campaign.min_offered_throughput_pct,
+        "point_attempts": campaign.point_attempts,
+        "terminal_point_attempts": campaign.terminal_point_attempts,
         "variants": [
-            {"name": name, "effective_config": dataclasses.asdict(cfg)}
+            {"name": name,
+             "rates": campaign.rates_for(name),
+             "effective_config": dataclasses.asdict(cfg)}
             for name, cfg in configs
         ],
     }
@@ -559,7 +605,7 @@ def execute(campaign: CampaignConfig, configs: list[tuple[str, RunConfig]],
                           flush=True)
                 sweep_mod.sweep(
                     cfg,
-                    campaign.rates,
+                    campaign.rates_for(name),
                     str(out / name),
                     sweep_field=campaign.sweep_field,
                     warmup_s=campaign.warmup_s,
@@ -567,6 +613,7 @@ def execute(campaign: CampaignConfig, configs: list[tuple[str, RunConfig]],
                     drop_tolerance_pct=campaign.drop_tolerance_pct,
                     stop_on_drop=campaign.stop_on_drop,
                     point_attempts=campaign.point_attempts,
+                    terminal_point_attempts=campaign.terminal_point_attempts,
                     strict_through_rate=campaign.strict_through_rate,
                     min_offered_throughput_pct=(
                         campaign.min_offered_throughput_pct
