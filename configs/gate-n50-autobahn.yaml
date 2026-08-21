@@ -5,10 +5,8 @@
 # proof that it is gone. It deliberately mirrors paper-committee-scaling.yaml
 # point-for-point so a pass here predicts that campaign's n=50 cell.
 #
-# The image is built on the control host from the local vantage checkout's HEAD
-# and served from a private registry on that host, so this gate needs no GHCR
-# publish and cannot move the shared `:latest` tag. The paper campaign still
-# needs an immutable public digest; this only answers "is the fix real on WAN".
+# The image is the same immutable GHCR digest the paper campaigns pin, so a
+# pass here is a citable record rather than a throwaway.
 name: gate-n50-autobahn
 output: results/gate-n50-autobahn
 committee_sizes: [50]
@@ -47,10 +45,9 @@ base:
   spam_lead_ms: 25000
   prometheus_scrape_interval_s: 5
 
-  image: wanbench-node:gate-autobahn
-  image_source: build-on-control
-  build_repo: /Users/nikitapolianskii/code/vantage
-  build_dockerfile: docker-bench/Dockerfile
+  # Vantage commit fb4a007035835dbff2bdf593269ef375affec6f2.
+  image: ghcr.io/polinikita/vantage-node@sha256:d8e573c99df492cbddb7280b2e0e6c5aefa115ba2523b1db906815261fac2289
+  image_source: registry
 
   wan:
     mode: netem

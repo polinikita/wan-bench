@@ -1,0 +1,89 @@
+# Knee probe at n=100 for the fixed Autobahn build.
+#
+# Optimistic all-to-all has never held an accepted point above 10k tx/s at
+# n=100 on any image, so its knee is unmeasured. This walks 100k/120k/150k to
+# locate it, and re-checks seamless at 275k -- its previous top accepted rung,
+# measured on the pre-alignment era-A image -- on the same fleet.
+#
+# Both variants also run the 100 tx/s rung. That rung is validated strictly
+# (every validator, not just the median), so it reproduces the exact n=100
+# cell where the wedge stalled ~75 of 100 validators for optimistic and all
+# 100 for seamless; it is also the point the figures join as their n=100
+# committee-scaling cell.
+#
+# stop_on_drop is off: a probe wants every requested rung on record, not an
+# early exit at the first one that overloads. Each rung is measured exactly
+# once (a flaky rung is self-evident here, because the rungs above it still
+# run and would contradict it).
+#
+# Validation matches paper-n100-throughput.yaml so an accepted point here
+# predicts that campaign's cell: strict at or below 10k, exploratory above,
+# acceptance at 95% of offered load.
+#
+# The image is the same immutable GHCR digest the paper campaigns pin, so
+# these points are citable records.
+name: probe-n100-autobahn-knee
+output: results/probe-n100-autobahn-knee
+committee_sizes: [100]
+rates: [100, 100000, 120000, 150000]
+warmup_s: 30
+window_s: 120
+drop_tolerance_pct: 5
+stop_on_drop: false
+point_attempts: 1
+terminal_point_attempts: 1
+strict_through_rate: 10000
+min_offered_throughput_pct: 95
+
+base:
+  region: eu-west-1
+  profile: null
+  az: eu-west-1a
+  # 8 vCPUs, 16 GiB memory, and one 200 GB local NVMe SSD.
+  instance_type: c5d.2xlarge
+  key_name: wanbench-key
+  ssh_key_path: ~/.ssh/id_ed25519_nikita_iota6
+  ssh_user: ubuntu
+  ssh_open_cidr: null
+  spot: false
+  disk_gb: 50
+  use_instance_store: true
+  keep_monitoring_on_down: false
+  grafana_open_cidr: null
+  deadman_minutes: 60
+
+  tx_size: 512
+  tx_mode: random
+  delta_ms: 200
+  max_header_delay_ms: 100
+  spam_initial_delay_ms: 10000
+  spam_delay_per_node_ms: 200
+  spam_lead_ms: 25000
+  prometheus_scrape_interval_s: 5
+
+  # Vantage commit fb4a007035835dbff2bdf593269ef375affec6f2.
+  image: ghcr.io/polinikita/vantage-node@sha256:d8e573c99df492cbddb7280b2e0e6c5aefa115ba2523b1db906815261fac2289
+  image_source: registry
+
+  wan:
+    mode: netem
+    rtt_csv: latency/aws-10region-rtt.csv
+    jitter_ms: 0.0
+    halve_rtt: true
+    netem_limit_pkts: 100000
+
+  fault:
+    kind: none
+
+variants:
+  - name: autobahn-optimistic-a2a
+    protocol: autobahn-optimistic
+    metrics_port: 6003
+    all_to_all: true
+
+  - name: autobahn-seamless
+    protocol: autobahn-seamless
+    metrics_port: 6003
+    # The strict anchor plus its previously accepted ceiling, for a
+    # like-for-like check of both on this build.
+    rates: [100, 275000]

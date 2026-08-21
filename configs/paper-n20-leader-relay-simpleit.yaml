@@ -32,10 +32,10 @@ base:
   grafana_open_cidr: null
   deadman_minutes: 60
 
-  # Vantage commit 175c0ba5f6ec203dad2cae877e860f3eb7a2ffc7. (This pin was
+  # Vantage commit fb4a007035835dbff2bdf593269ef375affec6f2. (This pin was
   # migrated from a 13b4c20 tag to an immutable digest; the digest below is
   # 175c0ba, not 13b4c20, which is sha256:e4bc05f0.)
-  image: ghcr.io/polinikita/vantage-node@sha256:a8497560d6e199eb1012231371fb3171393d23f9dbee11e9b98f6b119a58bd95
+  image: ghcr.io/polinikita/vantage-node@sha256:d8e573c99df492cbddb7280b2e0e6c5aefa115ba2523b1db906815261fac2289
   image_source: registry
 
   tx_size: 512

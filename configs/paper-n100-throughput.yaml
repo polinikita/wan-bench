@@ -54,8 +54,8 @@ base:
 variants:
   - name: vantage
     protocol: vantage
-    # Vantage commit 175c0ba5f6ec203dad2cae877e860f3eb7a2ffc7.
-    image: &vantage_image ghcr.io/polinikita/vantage-node@sha256:a8497560d6e199eb1012231371fb3171393d23f9dbee11e9b98f6b119a58bd95
+    # Vantage commit fb4a007035835dbff2bdf593269ef375affec6f2.
+    image: &vantage_image ghcr.io/polinikita/vantage-node@sha256:d8e573c99df492cbddb7280b2e0e6c5aefa115ba2523b1db906815261fac2289
     metrics_port: 6003
     echo_avail_claims: true
     vantage_compact_ids: true
