@@ -82,6 +82,21 @@ reap() {
     run_name=("${run_name[@]+"${run_name[@]}"}")
 }
 
+# Reps of one question reuse that campaign's name, and the fleet's security
+# group is named after it. Two concurrent reps therefore collide: the second
+# fails to create the group, and its cleanup deletes the group the first one
+# is still launching into, killing both. Reps must run one at a time per
+# question; different questions remain free to overlap.
+question_running() {
+    local question=$1 name
+    for name in ${run_name[@]+"${run_name[@]}"}; do
+        case "$name" in
+            "$question rep-"*) return 0 ;;
+        esac
+    done
+    return 1
+}
+
 # Pending queue in launch priority: all reps of the longest campaign lead, so
 # the critical path starts immediately and shorter fleets fill the gaps.
 pending=()
@@ -106,7 +121,7 @@ while [ "${#pending[@]}" -gt 0 ] || [ "${#run_pids[@]}" -gt 0 ]; do
     next=()
     for entry in "${pending[@]+"${pending[@]}"}"; do
         IFS=: read -r question config cost rep <<< "$entry"
-        if [ $((used + cost)) -le "$VCPU_CAP" ]; then
+        if [ $((used + cost)) -le "$VCPU_CAP" ] && ! question_running "$question"; then
             launch "$question" "$config" "$cost" "$rep"
         else
             next+=("$entry")
@@ -120,6 +135,7 @@ while [ "${#pending[@]}" -gt 0 ] || [ "${#run_pids[@]}" -gt 0 ]; do
              "VCPU_CAP=$VCPU_CAP; aborting" >&2
         exit 1
     fi
+    reap
 done
 
 echo "run-all: matrix complete"
