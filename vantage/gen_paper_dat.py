@@ -105,7 +105,11 @@ def build_committee(results: str, prov: dict) -> list[list]:
         row: list = [n]
         for prefix, vdir in COMMITTEE_ORDER:
             if n == 100:
-                src = [f"{results}/throughput/rep-*/{{variant}}/sweep.json"]
+                # The n=100 row joins from the throughput ladder's rate-100
+                # point USING THAT FIGURE'S OWN SOURCES per variant (Bluestreak
+                # m5d, Sailfish side campaigns), so the two figures agree
+                # byte-for-byte on every column.
+                src = throughput_sources(results, vdir)
             else:
                 src = [f"{results}/committee-scaling/rep-*/n-%d/{{variant}}/sweep.json" % n]
             pts = collect(src, vdir).get(100, [])
@@ -117,7 +121,8 @@ def build_committee(results: str, prov: dict) -> list[list]:
             cpu = round(med([p["cpu_cores_p50"] for p in pts]), 3)
             wire = round(med([p["bandwidth_efficiency_p50"] for p in pts]), 4)
             row += [f"{lat:.1f}", f"{cpu:.3f}", f"{wire:.4f}"]
-            prov[f"committee n={n} {vdir}"] = f"{len(pts)} rep(s), c5d"
+            fleet = "join(fig sources)" if n == 100 else "c5d"
+            prov[f"committee n={n} {vdir}"] = f"{len(pts)} rep(s), {fleet}"
         rows.append(row)
     return rows
 
