@@ -197,11 +197,18 @@ def build_throughput(results: str, prov: dict):
     main_rows = []
     for rate in PAPER_RATES:
         row: list = [offered_label(rate)]
+        hits = 0
         for prefix, _ in THROUGHPUT_ORDER:
             cell = accepted.get(prefix, {}).get(rate)
-            row += ([f"{cell[0]:.4f}", f"{cell[1]:.3f}", f"{cell[2]:.4f}", f"{cell[3]:.1f}"]
-                    if cell else ["nan", "nan", "nan", "nan"])
-        main_rows.append(row)
+            if cell:
+                hits += 1
+                row += [f"{cell[0]:.4f}", f"{cell[1]:.3f}", f"{cell[2]:.4f}", f"{cell[3]:.1f}"]
+            else:
+                row += ["nan", "nan", "nan", "nan"]
+        # An all-nan row is not a data point, and under pgfplots'
+        # `unbounded coords=jump` it severs every series' polyline at that x.
+        if hits:
+            main_rows.append(row)
 
     ov_rates = sorted({r for r, _ in overload.values()})
     ov_rows = []
