@@ -1,0 +1,83 @@
+run_id: paper-committee-scaling-n50
+region: eu-west-1
+az: eu-west-1a
+profile: null
+instance_type: c5d.2xlarge
+min_vcpu: 8
+min_mem_gib: 16
+min_local_nvme: true
+instance_families:
+- c
+- m
+max_type_candidates: 6
+ami: ami-02cc1d87cd15bbf7b
+key_name: wanbench-key
+ssh_key_path: ~/.ssh/id_ed25519_nikita_iota6
+ssh_user: ubuntu
+ssh_open_cidr: 84.140.85.48/32
+spot: false
+spot_max_price: null
+disk_gb: 50
+use_instance_store: true
+keep_monitoring_on_down: false
+dashboards: []
+protocol: starfish
+nodes: 50
+image: ghcr.io/iotaledger/starfish-node@sha256:3f7ee52dff606214e1dd979c31783f4bb4391405c2317c4b41b0728a89d04d88
+image_source: registry
+build_repo: ''
+build_dockerfile: ''
+rate: 100
+correct_load_only: false
+adversarial_rate: 0
+tx_size: 512
+tx_mode: random
+duration_s: 150
+protocol_flags:
+- --consensus
+- sailfish-pp
+all_to_all: false
+channel_auth: true
+echo_avail_claims: true
+vantage_compact_ids: true
+sequence_checkpoints: true
+sequence_install_enabled: true
+sequence_checkpoint_interval_views: 20
+sequence_sync_min_gap_views: 50
+sequence_sync_chunk_outcomes: 256
+sequence_sync_chunk_outcome_items: 1600
+delta_ms: 200
+max_header_delay_ms: 100
+data_lane_drop_publishers: []
+data_lane_drop_receivers: []
+data_lane_drop_staggered_senders: 0
+data_lane_drop_staggered_width: 0
+data_lane_drop_publisher_stride: 1
+data_lane_drop_staggered_stride: 1
+data_lane_drop_silent_repair: false
+data_lane_drop_headers: true
+leader_relay_attack: false
+spam_initial_delay_ms: 10000
+spam_delay_per_node_ms: 200
+spam_lead_ms: 25000
+client_activate_at_ms: null
+metrics_active_at_ms: null
+deadman_minutes: 60
+wan:
+  rtt_csv: latency/aws-10region-rtt.csv
+  jitter_ms: 0.0
+  halve_rtt: true
+  mode: netem
+  netem_limit_pkts: 100000
+fault:
+  kind: none
+  at_s: 40
+  for_s: 15
+  nodes: []
+  pct: 10
+  group_a: []
+  group_b: []
+  mode: cut
+metrics_port: 1500
+grafana_open_cidr: 84.140.85.48/32
+prometheus_scrape_interval_s: 5

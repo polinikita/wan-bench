@@ -1,0 +1,4 @@
+offered vtps vcpu veff vlat aotps aocpu aoeff aolat astps ascpu aseff aslat sotps socpu soeff solat sbtps sbcpu sbeff sblat bltps blcpu bleff bllat sftps sfcpu sfeff sflat
+170 nan nan nan nan nan nan nan nan nan nan nan nan nan nan nan nan nan nan nan nan nan nan nan nan 116.6116 2.618 1.4042 1025.7
+275 nan nan nan nan nan nan nan nan nan nan nan nan nan nan nan nan nan nan nan nan 240.8919 2.442 1.0590 5403.0 nan nan nan nan
+300 67.7948 3.835 4.4804 16026.0 0.1416 2.379 1573.1540 673.5 10.0400 2.517 26.5624 837.5 71.1604 3.555 4.7299 17210.0 73.6221 3.423 4.5063 19133.5 nan nan nan nan nan nan nan nan
