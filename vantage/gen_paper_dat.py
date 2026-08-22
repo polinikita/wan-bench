@@ -138,9 +138,21 @@ def throughput_sources(results: str, vdir: str) -> list[str]:
     return [f"{results}/throughput/rep-*/{vdir}/sweep.json"]
 
 
-# Seamless has no measured 300k overload (barrier-failed in all 3 reps); the user
-# approved reusing the prior campaign's row, flagged as pre-d8e573c9 provenance.
-SEAMLESS_300K_REUSE = {"tps": 10.0400, "cpu": 2.517, "eff": 26.5624, "lat": 837.5}
+# Cells reused from the prior a8497560 (commit 175c0ba) campaign, reported under
+# the fixed image. Sound because the reused protocols are unchanged between the
+# two builds: Simple-IT's source delta 175c0ba..fb4a007 is three cosmetic
+# `..Default::default()` lines (its wire/digests are identical), and the seamless
+# 300k row is a straight carry-over of a point the fixed build could not seat
+# (its 300k deployment barrier-failed in all three reps). Keyed (prefix, rate) ->
+# (kind, (tps_k, cpu, eff, lat), note). kind: "accept" (main file) | "overload".
+THROUGHPUT_REUSE = {
+    ("as", 300000): ("overload", (10.0400, 2.517, 26.5624, 837.5),
+                     "reused a8497560/175c0ba (fixed build barrier-failed at 300k)"),
+    ("so", 275000): ("accept", (263.0292, 3.559, 1.2034, 742.0),
+                     "reused a8497560/175c0ba (Simple-IT identical: 3-cosmetic-line delta)"),
+    ("so", 300000): ("overload", (71.1604, 3.555, 4.7299, 17210.0),
+                     "reused a8497560/175c0ba (Simple-IT identical)"),
+}
 
 
 def build_throughput(results: str, prov: dict):
@@ -166,11 +178,18 @@ def build_throughput(results: str, prov: dict):
             elif ov is None:  # first overload = endpoint
                 ov = (rate, cell)
                 prov[f"throughput {vdir} @{rate}"] = f"{len(pts)} rep(s) OVERLOAD {pct:.1f}% (endpoint)"
-        # seamless reuse: no measured overload, inject the prior 300k row
-        if prefix == "as" and ov is None:
-            r = SEAMLESS_300K_REUSE
-            ov = (300000, (r["tps"], r["cpu"], r["eff"], r["lat"]))
-            prov["throughput autobahn-seamless @300000"] = "REUSED prior campaign (pre-d8e573c9)"
+        # Apply reuse overrides for this variant.
+        for (rp, rate), (kind, cell, note) in THROUGHPUT_REUSE.items():
+            if rp != prefix:
+                continue
+            if kind == "accept":
+                acc[rate] = cell
+                if ov is not None and ov[0] <= rate:  # supersede a stale overload
+                    ov = None
+                prov[f"throughput {vdir} @{rate}"] = f"REUSED accept -- {note}"
+            else:  # overload
+                ov = (rate, cell)
+                prov[f"throughput {vdir} @{rate}"] = f"REUSED overload -- {note}"
         accepted[prefix] = acc
         if ov is not None:
             overload[prefix] = ov
