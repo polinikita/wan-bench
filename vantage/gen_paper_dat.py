@@ -96,6 +96,15 @@ def med(values: list[float]) -> float:
     return statistics.median(values)
 
 
+#: A point that commits less than this fraction of its offered load has not
+#: measured a latency: the reporters are cumulative from process start, so the
+#: reported percentile still describes the pre-collapse traffic while the
+#: submitted backlog never enters the histogram at all. The tell is a latency
+#: that *falls* as offered load rises. Such a point keeps its throughput but
+#: reports no latency.
+COLLAPSED_THROUGHPUT_PCT = 5.0
+
+
 # ---- data files -----------------------------------------------------------
 
 def build_committee(results: str, prov: dict) -> list[list]:
@@ -151,8 +160,10 @@ def throughput_sources(results: str, vdir: str) -> list[str]:
 # (its 300k deployment barrier-failed in all three reps). Keyed (prefix, rate) ->
 # (kind, (tps_k, cpu, eff, lat), note). kind: "accept" (main file) | "overload".
 THROUGHPUT_REUSE = {
-    ("as", 300000): ("overload", (10.0400, 2.517, 26.5624, 837.5),
-                     "reused a8497560/175c0ba (fixed build barrier-failed at 300k)"),
+    ("as", 300000): ("overload", (10.0400, 2.517, 26.5624, None),
+                     "reused a8497560/175c0ba (fixed build barrier-failed at 300k); "
+                     "collapsed at 3.3% of offered, so its cumulative p50 read of "
+                     "837.5 ms describes pre-collapse traffic only and is not emitted"),
     ("so", 275000): ("accept", (263.0292, 3.559, 1.2034, 742.0),
                      "reused a8497560/175c0ba (Simple-IT identical: 3-cosmetic-line delta)"),
     ("so", 300000): ("overload", (71.1604, 3.555, 4.7299, 17210.0),
@@ -181,8 +192,17 @@ def build_throughput(results: str, prov: dict):
                 acc[rate] = cell
                 prov[f"throughput {vdir} @{rate}"] = f"{len(pts)} rep(s) accept {pct:.1f}%"
             elif ov is None:  # first overload = endpoint
-                ov = (rate, cell)
-                prov[f"throughput {vdir} @{rate}"] = f"{len(pts)} rep(s) OVERLOAD {pct:.1f}% (endpoint)"
+                if pct < COLLAPSED_THROUGHPUT_PCT:
+                    # Keep throughput/CPU/wire; drop the unmeasurable latency.
+                    ov = (rate, (tps, cpu, eff, None))
+                    prov[f"throughput {vdir} @{rate}"] = (
+                        f"{len(pts)} rep(s) COLLAPSED {pct:.1f}% (endpoint; "
+                        f"latency not measurable, cumulative p50 read "
+                        f"{lat:.1f} ms describes pre-collapse traffic only)")
+                else:
+                    ov = (rate, cell)
+                    prov[f"throughput {vdir} @{rate}"] = (
+                        f"{len(pts)} rep(s) OVERLOAD {pct:.1f}% (endpoint)")
         # Apply reuse overrides for this variant.
         for (rp, rate), (kind, cell, note) in THROUGHPUT_REUSE.items():
             if rp != prefix:
@@ -223,7 +243,8 @@ def build_throughput(results: str, prov: dict):
             hit = overload.get(prefix)
             if hit and hit[0] == rate:
                 c = hit[1]
-                row += [f"{c[0]:.4f}", f"{c[1]:.3f}", f"{c[2]:.4f}", f"{c[3]:.1f}"]
+                row += [f"{c[0]:.4f}", f"{c[1]:.3f}", f"{c[2]:.4f}",
+                        "nan" if c[3] is None else f"{c[3]:.1f}"]
             else:
                 row += ["nan", "nan", "nan", "nan"]
         ov_rows.append(row)
