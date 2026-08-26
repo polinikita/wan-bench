@@ -10,7 +10,7 @@ import tempfile
 import time
 
 from .config import RunConfig
-from .protocols import adapter_for
+from .protocols import KEY_DIR, adapter_for
 from .ssh import Host, Ssh
 
 
@@ -29,15 +29,28 @@ def _parameters(cfg: RunConfig, pubkeys: list[dict] | None = None) -> dict:
 def generate_keys(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host]) -> list[dict]:
     """Run keygen once per node on the control host; return pubkey dicts in order."""
     adapter = adapter_for(cfg)
-    ssh.run(control, "sudo mkdir -p /opt/wanbench/keys && "
-                     "sudo chown -R $(id -u) /opt/wanbench/keys")
+    ssh.run(control, f"sudo mkdir -p {KEY_DIR} && "
+                     f"sudo chown -R $(id -u) {KEY_DIR}")
 
     def one(h) -> dict:
         out = ssh.run(control, f"sudo {adapter.keygen_cmd(h.index)}", timeout=300)
         key = json.loads(out)
         # Store each private key only until it is copied to its validator.
-        ssh.run(control, f"cat > /opt/wanbench/keys/key-{h.index}.json <<'EOF'\n{out}\nEOF")
-        return _public_only(key)
+        ssh.run(control, f"cat > {KEY_DIR}/key-{h.index}.json <<'EOF'\n{out}\nEOF")
+        public = _public_only(key)
+        # A post-quantum committee also publishes a consensus public key. The
+        # key file carries only its private half and `_public_only` strips
+        # that, so the public half has to come back from the binary. Reads the
+        # file written just above.
+        pubkey_cmd = adapter.consensus_pubkey_cmd(h.index)
+        if pubkey_cmd is not None:
+            printed = ssh.run(control, f"sudo {pubkey_cmd}", timeout=300).strip()
+            if not printed:
+                raise ValueError(
+                    f"node {h.index}: no consensus public key for scheme "
+                    f"{cfg.consensus_signature_scheme}")
+            public["consensus_key"] = printed
+        return public
 
     # Preserve host order and limit concurrent sessions on the control host.
     workers = min(16, max(1, len(hosts)))
@@ -68,7 +81,7 @@ def deploy(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
 
         # Fetch keys with bounded concurrency before the validator fan-out.
         def fetch_key(h: Host) -> None:
-            keytext = ssh.run(control, f"cat /opt/wanbench/keys/key-{h.index}.json")
+            keytext = ssh.run(control, f"cat {KEY_DIR}/key-{h.index}.json")
             (pathlib.Path(tmp) / f"key-{h.index}.json").write_text(keytext)
 
         with concurrent.futures.ThreadPoolExecutor(

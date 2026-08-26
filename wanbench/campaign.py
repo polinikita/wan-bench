@@ -29,6 +29,7 @@ _VARIANT_FIELDS = frozenset({
     "metrics_port",
     "protocol_flags",
     "all_to_all",
+    "consensus_signature_scheme",
     "channel_auth",
     # Sweeping the header delay pairs both settings on one fleet.
     "max_header_delay_ms",

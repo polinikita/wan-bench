@@ -25,6 +25,10 @@ CONSENSUS_PORT = VANTAGE_PORTS["primary_to_primary"]
 WORKER_PORT = VANTAGE_PORTS["worker_to_worker"]
 TX_PORT = VANTAGE_PORTS["transactions"]
 
+# Control-host directory holding one key file per validator. The consensus
+# public-key command mounts it, so it must stay in step with deploy.py.
+KEY_DIR = "/opt/wanbench/keys"
+
 
 class ProtocolAdapter(abc.ABC):
     def __init__(self, cfg: RunConfig):
@@ -41,6 +45,15 @@ class ProtocolAdapter(abc.ABC):
     @abc.abstractmethod
     def run_cmd(self, host: Host, hosts: list[Host]) -> str:
         """Return the container command for one node."""
+
+    def consensus_pubkey_cmd(self, index: int) -> str | None:
+        """Command printing node `index`'s consensus public key, or None.
+
+        None means there is nothing extra to publish: either the protocol has
+        no separate consensus key, or the committee runs ed25519 and the
+        identity key in the key file already serves.
+        """
+        return None
 
     def parameters(self, pubkeys: list[dict] | None = None) -> dict | None:
         """Return parameters.json content, or None for generated parameters."""
@@ -89,8 +102,20 @@ def _docker_prefix(cfg: RunConfig, idx: int, entrypoint: str, env_extra: str = "
 
 class Vantage(ProtocolAdapter):
     def keygen_cmd(self, index: int) -> str:
+        scheme = self.cfg.consensus_signature_scheme
+        # Omitted entirely for ed25519, so an existing campaign issues exactly
+        # the command it issued before this flag existed.
+        extra = "" if scheme == "ed25519" else f" --consensus-scheme {scheme}"
         return (f"docker run --rm --entrypoint node {self.cfg.image} "
-                f"generate_keys --filename /dev/stdout")
+                f"generate_keys --filename /dev/stdout{extra}")
+
+    def consensus_pubkey_cmd(self, index: int) -> str | None:
+        if self.cfg.consensus_signature_scheme == "ed25519":
+            return None
+        # Unlike keygen, this reads a file, so the key directory is mounted.
+        return (f"docker run --rm -v {KEY_DIR}:/keys --entrypoint node "
+                f"{self.cfg.image} consensus_public_key "
+                f"--keys /keys/key-{index}.json")
 
     def committee(self, hosts: list[Host], pubkeys: list[dict]) -> dict:
         # config::Authority requires every address below.
@@ -110,7 +135,15 @@ class Vantage(ProtocolAdapter):
                                   "worker_to_worker": f"{ip}:{p['worker_to_worker']}",
                                   "metrics": f"{ip}:{p['worker_metrics']}"}},
             }
-        return {"authorities": authorities}
+            # Present only under a post-quantum scheme; the node rejects a
+            # committee that names a scheme without a key for every authority.
+            if pk.get("consensus_key"):
+                authorities[pk["name"]]["consensus_key"] = pk["consensus_key"]
+        committee = {"authorities": authorities}
+        scheme = self.cfg.consensus_signature_scheme
+        if scheme != "ed25519":
+            committee["consensus_signature_scheme"] = scheme
+        return committee
 
     def parameters(self, pubkeys: list[dict] | None = None) -> dict:
         # Complete config::Parameters document for the Vantage binary.

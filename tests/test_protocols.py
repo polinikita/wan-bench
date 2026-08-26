@@ -30,6 +30,74 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(SimpleIt(cfg).parameters()["timeout_delay"], 1_600)
         self.assertEqual(SimpleItBracha(cfg).parameters()["timeout_delay"], 1_000)
 
+    def test_ed25519_committees_are_untouched_by_the_scheme_plumbing(self):
+        cfg = RunConfig(nodes=2, rate=400, image="image")
+        hosts = [Host(i, f"i-{i}", f"1.2.3.{i}", f"10.0.0.{i}") for i in range(2)]
+        pubkeys = [{"name": f"pk{i}"} for i in range(2)]
+        committee = Vantage(cfg).committee(hosts, pubkeys)
+
+        # No scheme key, no consensus_key, and the keygen command is exactly
+        # what it was before the flag existed.
+        self.assertNotIn("consensus_signature_scheme", committee)
+        for authority in committee["authorities"].values():
+            self.assertNotIn("consensus_key", authority)
+        self.assertNotIn("--consensus-scheme", Vantage(cfg).keygen_cmd(0))
+        self.assertIsNone(Vantage(cfg).consensus_pubkey_cmd(0))
+
+    def test_post_quantum_committee_publishes_scheme_and_per_authority_key(self):
+        cfg = RunConfig(nodes=2, rate=400, image="image",
+                        consensus_signature_scheme="ml-dsa-44")
+        hosts = [Host(i, f"i-{i}", f"1.2.3.{i}", f"10.0.0.{i}") for i in range(2)]
+        pubkeys = [{"name": f"pk{i}", "consensus_key": f"ml-dsa-44:key{i}"}
+                   for i in range(2)]
+        committee = Vantage(cfg).committee(hosts, pubkeys)
+
+        self.assertEqual(committee["consensus_signature_scheme"], "ml-dsa-44")
+        self.assertEqual(
+            committee["authorities"]["pk0"]["consensus_key"], "ml-dsa-44:key0")
+        self.assertEqual(
+            committee["authorities"]["pk1"]["consensus_key"], "ml-dsa-44:key1")
+
+    def test_post_quantum_keygen_and_pubkey_commands(self):
+        cfg = RunConfig(nodes=2, rate=400, image="img",
+                        consensus_signature_scheme="ml-dsa-65")
+        adapter = Vantage(cfg)
+
+        self.assertIn("--consensus-scheme ml-dsa-65", adapter.keygen_cmd(0))
+        cmd = adapter.consensus_pubkey_cmd(3)
+        # Reads a file, so the key directory deploy.py writes must be mounted.
+        self.assertIn("-v /opt/wanbench/keys:/keys", cmd)
+        self.assertIn("consensus_public_key --keys /keys/key-3.json", cmd)
+
+    def test_the_scheme_reaches_every_vantage_binary_protocol(self):
+        for adapter_cls in (Vantage, AutobahnOptimistic, AutobahnSeamless,
+                            SimpleIt, SimpleItBracha):
+            cfg = RunConfig(nodes=4, rate=400, image="img",
+                            consensus_signature_scheme="ml-dsa-44",
+                            all_to_all=adapter_cls is AutobahnOptimistic)
+            adapter = adapter_cls(cfg)
+            self.assertIn("--consensus-scheme ml-dsa-44", adapter.keygen_cmd(0),
+                          adapter_cls.__name__)
+            self.assertIsNotNone(adapter.consensus_pubkey_cmd(0),
+                                 adapter_cls.__name__)
+        # Starfish selects its scheme through protocol_flags instead.
+        starfish = RunConfig(nodes=4, rate=400, image="img",
+                             protocol="starfish", protocol_flags=["--consensus", "starfish"])
+        self.assertIsNone(Starfish(starfish).consensus_pubkey_cmd(0))
+
+    def test_unknown_or_misapplied_consensus_scheme_is_rejected(self):
+        cfg = RunConfig(nodes=4, rate=400, image="img", key_name="key",
+                        consensus_signature_scheme="rsa")
+        with self.assertRaisesRegex(ValueError, "consensus_signature_scheme"):
+            cfg.validate()
+
+        starfish = RunConfig(nodes=4, rate=400, image="img", key_name="key",
+                             protocol="starfish",
+                             protocol_flags=["--consensus", "starfish"],
+                             consensus_signature_scheme="ml-dsa-44")
+        with self.assertRaisesRegex(ValueError, "protocol_flags"):
+            starfish.validate()
+
     def test_prometheus_scrape_interval_is_configurable_for_onset_debugging(self):
         yml = _prometheus_yml(["10.0.0.1:6003"], scrape_interval_s=5)
         self.assertIn("scrape_interval: 5s", yml)
