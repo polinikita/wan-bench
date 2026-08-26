@@ -217,137 +217,84 @@ class PaperThroughputCampaignTests(unittest.TestCase):
             f"shared-binary variants disagree on their image: {shared_binary}")
 
 
-class DataLaneDropCampaignTests(unittest.TestCase):
-    def test_n20_leader_relay_manifest_matches_local_fault_profile(self):
+class LeaderRelayTrioCampaignTests(unittest.TestCase):
+    """The n=20 leader-relay study, split into one campaign per protocol.
+
+    The relay attack leaks state across variants on a reused fleet, so the
+    single manifest became three. Nothing else about the study changed, which
+    makes divergence between the three the hazard the split introduced: a
+    parameter edited in one file and not the others would silently compare
+    protocols measured under different conditions.
+    """
+
+    TRIO = ("autobahn", "simpleit", "vantage")
+    IMAGE = ("ghcr.io/polinikita/vantage-node@sha256:"
+             "d8e573c99df492cbddb7280b2e0e6c5aefa115ba2523b1db906815261fac2289")
+
+    def load(self, tag):
         path = (Path(__file__).parents[1] / "configs" /
-                "n20-leader-relay-scaling.yaml")
+                f"paper-n20-leader-relay-{tag}.yaml")
         campaign = CampaignConfig.load(str(path))
-        configs = campaign.configs()
+        (name, cfg), = campaign.configs()
+        return campaign, name, cfg
 
-        self.assertEqual(campaign.committee_sizes, [20])
-        self.assertEqual(campaign.sweep_field, "rate")
+    def test_trio_covers_the_three_protocols_once_each(self):
+        names = [self.load(tag)[1] for tag in self.TRIO]
         self.assertEqual(
-            campaign.rates,
-            [100, 1_000, 10_000, 20_000, 100_000, 200_000],
-        )
-        self.assertEqual(campaign.strict_through_rate, 99)
-        self.assertEqual(campaign.drop_tolerance_pct, 20)
-        self.assertEqual(campaign.min_offered_throughput_pct, 25)
-        self.assertEqual(
-            [name for name, _cfg in configs],
-            ["autobahn-optimistic-a2a", "vantage", "simpleit-optrbc"],
-        )
-        self.assertTrue(configs[0][1].all_to_all)
-        for _name, cfg in configs:
-            self.assertEqual(cfg.instance_type, "c5d.2xlarge")
-            self.assertEqual((cfg.region, cfg.az), ("eu-west-1", "eu-west-1a"))
-            self.assertEqual(cfg.wan.mode, "netem")
-            self.assertEqual(cfg.data_lane_drop_staggered_senders, 6)
-            self.assertEqual(cfg.data_lane_drop_staggered_width, 19)
-            self.assertTrue(cfg.data_lane_drop_silent_repair)
-            self.assertFalse(cfg.data_lane_drop_headers)
-            self.assertTrue(cfg.leader_relay_attack)
-            self.assertEqual(cfg.reachable_rate(), 70)
-            self.assertEqual(cfg.leader_relay_uncounted_rate(), 30)
-            self.assertEqual(cfg.image_source, "registry")
-            self.assertEqual(
-                cfg.image,
-                "ghcr.io/polinikita/vantage-node:"
-                "13b4c20f0869c0df52133f6ffa5ca3632ab42e94",
-            )
+            names, ["autobahn-optimistic-a2a", "simpleit-optrbc", "vantage"])
+        # Autobahn is the only variant measured all-to-all.
+        for tag, name in zip(self.TRIO, names):
+            _campaign, _name, cfg = self.load(tag)
+            self.assertEqual(cfg.all_to_all, name == "autobahn-optimistic-a2a")
 
-    def test_n40_leader_relay_manifest_is_the_uniform_three_protocol_sweep(self):
-        path = (Path(__file__).parents[1] / "configs" /
-                "n40-leader-relay-scaling.yaml")
-        campaign = CampaignConfig.load(str(path))
-        configs = campaign.configs()
+    def test_trio_agrees_on_every_measurement_parameter(self):
+        """A parameter may not drift between the three split manifests."""
+        sweep, fleet = {}, {}
+        for tag in self.TRIO:
+            campaign, _name, cfg = self.load(tag)
+            sweep[tag] = (tuple(campaign.committee_sizes), campaign.sweep_field,
+                          tuple(campaign.rates),
+                          campaign.warmup_s, campaign.window_s,
+                          campaign.point_attempts, campaign.strict_through_rate,
+                          campaign.drop_tolerance_pct,
+                          campaign.min_offered_throughput_pct)
+            fleet[tag] = (cfg.instance_type, cfg.region, cfg.az, cfg.image,
+                          cfg.image_source, cfg.wan.mode, cfg.wan.halve_rtt,
+                          cfg.tx_size, cfg.delta_ms, cfg.max_header_delay_ms)
+        self.assertEqual(len(set(sweep.values())), 1, f"sweep drift: {sweep}")
+        self.assertEqual(len(set(fleet.values())), 1, f"fleet drift: {fleet}")
 
-        self.assertEqual(campaign.committee_sizes, [40])
-        self.assertEqual(campaign.sweep_field, "rate")
-        self.assertEqual(campaign.rates[:6], [80, 200, 400, 600, 800, 1_000])
-        self.assertEqual(campaign.rates[-1], 250_000)
-        self.assertEqual(
-            [name for name, _cfg in configs],
-            ["autobahn-optimistic-a2a", "vantage", "simpleit-optrbc"],
-        )
-        self.assertTrue(configs[0][1].all_to_all)
-        for _name, cfg in configs:
-            self.assertEqual(cfg.instance_type, "c5d.2xlarge")
-            self.assertEqual((cfg.region, cfg.az), ("eu-west-1", "eu-west-1a"))
-            self.assertEqual(cfg.wan.mode, "netem")
-            self.assertEqual(cfg.data_lane_drop_staggered_senders, 13)
-            self.assertEqual(cfg.data_lane_drop_staggered_width, 39)
-            self.assertTrue(cfg.data_lane_drop_silent_repair)
-            self.assertFalse(cfg.data_lane_drop_headers)
-            self.assertTrue(cfg.leader_relay_attack)
-            self.assertEqual(cfg.reachable_rate(), 54)
-            self.assertEqual(cfg.leader_relay_uncounted_rate(), 26)
-            self.assertEqual(cfg.image_source, "registry")
-            self.assertEqual(
-                cfg.image,
-                "ghcr.io/polinikita/vantage-node:"
-                "13b4c20f0869c0df52133f6ffa5ca3632ab42e94",
-            )
+    def test_trio_pins_the_local_fault_profile(self):
+        for tag in self.TRIO:
+            with self.subTest(tag=tag):
+                campaign, _name, cfg = self.load(tag)
+                self.assertEqual(campaign.committee_sizes, [20])
+                self.assertEqual(campaign.sweep_field, "rate")
+                self.assertEqual(
+                    campaign.rates, [100, 1_000, 10_000, 20_000, 100_000, 200_000])
+                self.assertEqual(campaign.strict_through_rate, 99)
+                self.assertEqual(campaign.drop_tolerance_pct, 20)
+                self.assertEqual(campaign.min_offered_throughput_pct, 25)
 
-    def test_n100_manifest_matches_the_three_protocol_fault_matrix(self):
-        path = (Path(__file__).parents[1] / "configs" /
-                "n100-data-lane-drop-scaling.yaml")
-        campaign = CampaignConfig.load(str(path))
-        configs = campaign.configs()
+                # f=6 Byzantine lanes, each reaching 5=(f-1) correct holders,
+                # one below the f+1=7 PoA threshold.
+                self.assertEqual(cfg.data_lane_drop_staggered_senders, 6)
+                self.assertEqual(cfg.data_lane_drop_staggered_width, 19)
+                self.assertEqual(cfg.data_lane_drop_publisher_stride, 1)
+                self.assertEqual(cfg.data_lane_drop_staggered_stride, 1)
+                self.assertTrue(cfg.data_lane_drop_silent_repair)
+                self.assertFalse(cfg.data_lane_drop_headers)
+                self.assertTrue(cfg.leader_relay_attack)
+                self.assertEqual(cfg.reachable_rate(), 70)
+                self.assertEqual(cfg.leader_relay_uncounted_rate(), 30)
 
-        self.assertEqual(campaign.committee_sizes, [100])
-        self.assertEqual(
-            [name for name, _cfg in configs],
-            ["autobahn-optimistic-a2a", "vantage", "simpleit-optrbc"],
-        )
-        self.assertTrue(configs[0][1].all_to_all)
-        for _name, cfg in configs:
-            self.assertEqual(cfg.instance_type, "c5d.2xlarge")
-            self.assertEqual((cfg.region, cfg.az), ("eu-west-1", "eu-west-1a"))
-            self.assertEqual(cfg.wan.mode, "netem")
-            self.assertEqual(cfg.data_lane_drop_publishers, list(range(33)))
-            self.assertEqual(cfg.data_lane_drop_receivers, list(range(33, 100)))
-            self.assertTrue(cfg.data_lane_drop_silent_repair)
-            self.assertTrue(cfg.data_lane_drop_headers)
-            self.assertEqual(cfg.permanently_unavailable_publisher_count(), 33)
-            self.assertEqual(cfg.reachable_rate(), 67)
-            self.assertEqual(cfg.image_source, "build-on-control")
-
-    def test_n40_payload_only_manifest_is_the_local_gated_three_protocol_study(self):
-        path = (Path(__file__).parents[1] / "configs" /
-                "n40-payload-drop-scaling.yaml")
-        campaign = CampaignConfig.load(str(path))
-        configs = campaign.configs()
-
-        self.assertEqual(campaign.committee_sizes, [40])
-        self.assertEqual(campaign.sweep_field, "adversarial_rate")
-        self.assertEqual(
-            campaign.rates,
-            [0, 52_000, 104_000, 156_000, 208_000, 260_000, 312_000],
-        )
-        self.assertEqual(campaign.strict_through_rate, 52_000)
-        self.assertEqual(
-            [name for name, _cfg in configs],
-            ["autobahn-optimistic-a2a", "vantage", "simpleit-optrbc"],
-        )
-        self.assertTrue(configs[0][1].all_to_all)
-        for _name, cfg in configs:
-            self.assertEqual(cfg.instance_type, "c5d.2xlarge")
-            self.assertEqual((cfg.region, cfg.az), ("eu-west-1", "eu-west-1a"))
-            self.assertEqual(cfg.wan.mode, "netem")
-            self.assertEqual(cfg.data_lane_drop_publishers, [])
-            self.assertEqual(cfg.data_lane_drop_receivers, [])
-            self.assertEqual(cfg.data_lane_drop_staggered_senders, 13)
-            self.assertEqual(cfg.data_lane_drop_staggered_width, 26)
-            self.assertEqual(cfg.data_lane_drop_publisher_stride, 3)
-            self.assertEqual(cfg.data_lane_drop_staggered_stride, 13)
-            self.assertTrue(cfg.data_lane_drop_silent_repair)
-            self.assertFalse(cfg.data_lane_drop_headers)
-            self.assertEqual(cfg.rate, 97_200)
-            self.assertEqual(cfg.adversarial_rate, 0)
-            self.assertTrue(cfg.correct_load_only)
-            self.assertEqual(cfg.image_source, "registry")
-            self.assertIn("@sha256:", cfg.image)
+                self.assertEqual(cfg.instance_type, "c5d.2xlarge")
+                self.assertEqual((cfg.region, cfg.az), ("eu-west-1", "eu-west-1a"))
+                self.assertEqual(cfg.wan.mode, "netem")
+                # Pinned by digest, not tag: the recorded trio must stay
+                # reproducible even if a tag is moved.
+                self.assertEqual(cfg.image_source, "registry")
+                self.assertEqual(cfg.image, self.IMAGE)
 
 
 class StarfishM5dGcCampaignTests(unittest.TestCase):
