@@ -5,8 +5,9 @@ Replaces the hand-transcription that produced the current figures (and broke the
 n=100 join between committee-scaling.dat and throughput-sweep.dat). Reads
 `sweep.json` directly -- NOT `summarize.py`, which reports `ordering_p50` rather
 than the `material_p50` the figures use and formats to one decimal only -- takes
-the median across repetitions of each headline metric, and emits the three data
-files with the schemas, precision, and whisker conventions the .tex files expect.
+the median across repetitions of each headline metric, and emits the four figure
+data files, latency table, cadence summary, and per-cell provenance.  The cadence
+summary additionally reads the retained boundary Prometheus scrapes.
 
 Field mapping (verified byte-exact against surviving archives):
   *lat   <- material_p50_ms_since_start          (ms)
@@ -17,10 +18,10 @@ Field mapping (verified byte-exact against surviving archives):
   leader-relay *good <- 100 * tps_median / reachable_rate  (percent)
   leader-relay *p50/*p99 <- material_p*_ms_since_start / 1000  (seconds)
 
-Fleet split (Q3): the five shared-binary variants and Sailfish++ are measured on
+Fleet split (Q2): the five shared-binary variants and Sailfish++ are measured on
 c5d.2xlarge; Bluestreak is measured on m5d.2xlarge (it OOM-kills on c5d). Q1
-committee scaling is entirely c5d. Provenance for every emitted cell is written
-to <out>/provenance.json.
+uses c5d through n=50, then joins the Q2 sources at n=100. Provenance for every
+emitted cell is written to <out>/provenance.json.
 
 Usage:
     python3 vantage/gen_paper_dat.py --results results/vantage --out <dir>
@@ -48,6 +49,45 @@ RELAY_ORDER = [("opt", "autobahn-optimistic-a2a"), ("v", "vantage"), ("s", "simp
 
 PAPER_RATES = [100, 10000, 150000, 170000, 200000, 225000, 250000, 275000, 300000]
 RELAY_RATES = [100, 1000, 10000, 20000, 100000, 200000]
+
+# Low-load progress counters used only to explain how often each protocol gives
+# fresh data another opportunity to enter consensus.  These are deliberately
+# not treated as equivalent units of work: Vantage exposes proposal views, the
+# DAG implementations expose rounds, and Autobahn exposes request messages.  A
+# fault-free optimistic Autobahn slot sends one ConsensusRequest; a seamless
+# slot sends Prepare and Commit requests, hence the divisor of two.
+CADENCE_SPECS = {
+    "vantage": {
+        "metric": "vantage_entered_view",
+        "label": None,
+        "counter_units_per_opportunity": 1,
+        "unit": "proposal views",
+    },
+    "bluestreak": {
+        "metric": "dag_highest_round",
+        "label": None,
+        "counter_units_per_opportunity": 1,
+        "unit": "DAG rounds",
+    },
+    "sailfish-pp": {
+        "metric": "dag_highest_round",
+        "label": None,
+        "counter_units_per_opportunity": 1,
+        "unit": "DAG rounds",
+    },
+    "autobahn-optimistic-a2a": {
+        "metric": "network_messages_received_total",
+        "label": 'type="ConsensusRequest"',
+        "counter_units_per_opportunity": 1,
+        "unit": "consensus slots",
+    },
+    "autobahn-seamless": {
+        "metric": "network_messages_received_total",
+        "label": 'type="ConsensusRequest"',
+        "counter_units_per_opportunity": 2,
+        "unit": "consensus slots",
+    },
+}
 
 
 def offered_label(rate: int) -> str:
@@ -138,7 +178,7 @@ def build_committee(results: str, prov: dict) -> list[list]:
     return rows
 
 
-# Q3 fleet sources per variant.
+# Throughput-sweep fleet sources per variant.
 def throughput_sources(results: str, vdir: str) -> list[str]:
     if vdir == "bluestreak":  # m5d side campaigns (anchors + knee, incl. import)
         return [
@@ -152,6 +192,96 @@ def throughput_sources(results: str, vdir: str) -> list[str]:
             f"{results}/throughput/rep-*/sailfish-pp/sweep.json",
         ]
     return [f"{results}/throughput/rep-*/{vdir}/sweep.json"]
+
+
+# ---- low-load progress cadence -------------------------------------------
+
+def _prom_value(path: pathlib.Path, metric: str, label: str | None) -> float | None:
+    """Return the largest matching sample from a combined Prometheus scrape.
+
+    Shared-binary files contain both worker and primary registries.  Metrics
+    absent from one registry therefore appear once with a zero-valued placeholder
+    and once with their real value; taking the largest matching sample selects
+    the active registry without depending on concatenation order.
+    """
+    values: list[float] = []
+    for line in path.read_text().splitlines():
+        if not line or line.startswith("#"):
+            continue
+        sample, sep, raw = line.rpartition(" ")
+        if not sep or sample.split("{", 1)[0] != metric:
+            continue
+        if label is not None and label not in sample:
+            continue
+        try:
+            values.append(float(raw))
+        except ValueError:
+            continue
+    return max(values) if values else None
+
+
+def _cadence_run(run_dir: pathlib.Path, spec: dict) -> dict | None:
+    summary_path = run_dir / "summary.json"
+    if not summary_path.is_file():
+        return None
+    summary = json.loads(summary_path.read_text())
+    window_s = float(summary["window_s"])
+    deltas: list[float] = []
+    for baseline in sorted(run_dir.glob("baseline-node-*.prom")):
+        final = run_dir / baseline.name.replace("baseline-", "final-", 1)
+        if not final.is_file():
+            continue
+        before = _prom_value(baseline, spec["metric"], spec["label"])
+        after = _prom_value(final, spec["metric"], spec["label"])
+        if before is None or after is None or after < before:
+            continue
+        deltas.append(after - before)
+    if not deltas:
+        return None
+    median_delta = statistics.median(deltas)
+    divisor = spec["counter_units_per_opportunity"]
+    return {
+        "source": run_dir.as_posix(),
+        "window_s": round(window_s, 3),
+        "nodes": len(deltas),
+        "median_counter_delta": round(median_delta, 3),
+        "opportunities_per_s": round(median_delta / divisor / window_s, 3),
+    }
+
+
+def build_cadence(results: str) -> dict:
+    """Derive the n=100, 100 tx/s fresh-reference opportunity rates."""
+    variants = {}
+    for vdir, spec in CADENCE_SPECS.items():
+        run_dirs: set[pathlib.Path] = set()
+        for source in throughput_sources(results, vdir):
+            for sweep in glob.glob(source):
+                run_dirs.add(pathlib.Path(sweep).parent / "rate-100")
+        repetitions = []
+        for run_dir in sorted(run_dirs):
+            run = _cadence_run(run_dir, spec)
+            if run is not None:
+                repetitions.append(run)
+        if not repetitions:
+            continue
+        variants[vdir] = {
+            "unit": spec["unit"],
+            "metric": spec["metric"],
+            "metric_label": spec["label"],
+            "counter_units_per_opportunity": spec["counter_units_per_opportunity"],
+            "repetitions": repetitions,
+            "median_opportunities_per_s": round(statistics.median(
+                run["opportunities_per_s"] for run in repetitions), 3),
+        }
+    return {
+        "committee_size": 100,
+        "offered_tx_s": 100,
+        "aggregation": (
+            "Median node counter rate within each run; median run rate for the "
+            "paper's approximate prose. Protocol units are not equivalent."
+        ),
+        "variants": variants,
+    }
 
 
 # Cells reused from the prior a8497560 (commit 175c0ba) campaign, reported under
@@ -406,8 +536,11 @@ def main() -> int:
     write_dat(out / "leader-relay.dat", RELAY_HEADER, relay_rows)
     write_percentile_table(out / "latency-percentiles.tex",
                            build_committee(args.results, {}), main_rows, relay_rows)
+    (out / "carrier-cadence.json").write_text(
+        json.dumps(build_cadence(args.results), indent=2, sort_keys=True) + "\n")
     (out / "provenance.json").write_text(json.dumps(prov, indent=2, sort_keys=True) + "\n")
-    print(f"wrote 4 .dat + latency-percentiles.tex + provenance.json to {out}")
+    print(f"wrote 4 .dat + latency-percentiles.tex + carrier-cadence.json + "
+          f"provenance.json to {out}")
     return 0
 
 
