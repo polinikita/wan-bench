@@ -102,7 +102,7 @@ def _docker_prefix(cfg: RunConfig, idx: int, entrypoint: str, env_extra: str = "
 
 class Vantage(ProtocolAdapter):
     def keygen_cmd(self, index: int) -> str:
-        scheme = self.cfg.consensus_signature_scheme
+        scheme = self.cfg.signature_scheme
         # Omitted entirely for ed25519, so an existing campaign issues exactly
         # the command it issued before this flag existed.
         extra = "" if scheme == "ed25519" else f" --consensus-scheme {scheme}"
@@ -110,7 +110,7 @@ class Vantage(ProtocolAdapter):
                 f"generate_keys --filename /dev/stdout{extra}")
 
     def consensus_pubkey_cmd(self, index: int) -> str | None:
-        if self.cfg.consensus_signature_scheme == "ed25519":
+        if self.cfg.signature_scheme == "ed25519":
             return None
         # Unlike keygen, this reads a file, so the key directory is mounted.
         return (f"docker run --rm -v {KEY_DIR}:/keys --entrypoint node "
@@ -140,9 +140,9 @@ class Vantage(ProtocolAdapter):
             if pk.get("consensus_key"):
                 authorities[pk["name"]]["consensus_key"] = pk["consensus_key"]
         committee = {"authorities": authorities}
-        scheme = self.cfg.consensus_signature_scheme
+        scheme = self.cfg.signature_scheme
         if scheme != "ed25519":
-            committee["consensus_signature_scheme"] = scheme
+            committee["signature_scheme"] = scheme
         return committee
 
     def parameters(self, pubkeys: list[dict] | None = None) -> dict:
@@ -347,6 +347,20 @@ class SimpleItBracha(_SimpleIt):
 
 
 class Starfish(ProtocolAdapter):
+    def node_parameters(self) -> dict:
+        """node-parameters.yaml consumed by benchmark-genesis.
+
+        The scheme has to be set here rather than on the run command: genesis
+        mints the key material, so a scheme chosen later would leave the
+        committee without keys. Genesis copies the value into
+        public-config.yaml, so the validators pick it up without a second flag
+        and the two halves cannot disagree.
+        """
+        parameters = {"mimic_latency": self.cfg.wan.mode == "mimic"}
+        if self.cfg.signature_scheme != "ed25519":
+            parameters["block_authentication"] = self.cfg.signature_scheme
+        return parameters
+
     def keygen_cmd(self, index: int) -> str:
         raise NotImplementedError("starfish uses committee-wide benchmark-genesis")
 

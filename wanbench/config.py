@@ -15,9 +15,10 @@ except ImportError as exc:  # pragma: no cover - surfaced at CLI startup
     raise SystemExit("wan-bench needs PyYAML: pip install -e .") from exc
 
 
-# Accepted by the node's --consensus-scheme flag; mirrors the scheme registry in
-# the vantage-bft crypto crate (crypto/src/consensus_auth.rs).
-CONSENSUS_SIGNATURE_SCHEMES = (
+# Both binaries accept the same names: vantage-bft's ConsensusSignatureScheme
+# (crypto/src/consensus_auth.rs) and starfish's BlockAuthenticationScheme
+# (crates/starfish-core/src/block_authentication.rs).
+SIGNATURE_SCHEMES = (
     "ed25519",
     "ml-dsa-44",
     "ml-dsa-65",
@@ -120,11 +121,13 @@ class RunConfig:
     protocol_flags: list[str] = field(default_factory=list)
     # Broadcast Autobahn consensus votes instead of sending them to the leader.
     all_to_all: bool = False
-    # Signature scheme for the Autobahn consensus/ordering path; the DAG/data
-    # path keeps its Ed25519 identity key either way. A post-quantum scheme
-    # mints one extra keypair per validator during keygen and publishes the
-    # public half in the committee, so it is fixed for the life of a deploy.
-    consensus_signature_scheme: str = "ed25519"
+    # Signature scheme for the protocol's authenticated path. What that covers
+    # differs by binary, so the two are not directly comparable: on vantage-bft
+    # it is the Autobahn consensus/ordering path only, leaving the DAG/data
+    # path on its Ed25519 identity key, while on starfish it is the block
+    # header of every protocol. Either way the key material is minted once, at
+    # keygen or genesis, so the scheme is fixed for the life of a deploy.
+    signature_scheme: str = "ed25519"
     # Authenticate cross-validator links with a per-frame pairwise MAC. The model assumes
     # authenticated channels, so runs carry that cost by default; set false to reproduce a
     # figure collected before authentication existed. The seed is minted per deploy.
@@ -277,16 +280,11 @@ class RunConfig:
             raise ValueError("config: correct_load_only must be boolean")
         if type(self.all_to_all) is not bool:
             raise ValueError("config: all_to_all must be boolean")
-        if self.consensus_signature_scheme not in CONSENSUS_SIGNATURE_SCHEMES:
+        if self.signature_scheme not in SIGNATURE_SCHEMES:
             raise ValueError(
-                f"config: unknown consensus_signature_scheme "
-                f"{self.consensus_signature_scheme!r}; expected one of "
-                f"{', '.join(CONSENSUS_SIGNATURE_SCHEMES)}")
-        if self.consensus_signature_scheme != "ed25519" and self.protocol == "starfish":
-            raise ValueError(
-                "config: consensus_signature_scheme applies to the Autobahn "
-                "ordering path; starfish selects its scheme through "
-                "protocol_flags instead")
+                f"config: unknown signature_scheme "
+                f"{self.signature_scheme!r}; expected one of "
+                f"{', '.join(SIGNATURE_SCHEMES)}")
         if type(self.channel_auth) is not bool:
             raise ValueError("config: channel_auth must be boolean")
         if self.tx_size < 1:

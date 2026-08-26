@@ -38,7 +38,7 @@ class ProtocolTests(unittest.TestCase):
 
         # No scheme key, no consensus_key, and the keygen command is exactly
         # what it was before the flag existed.
-        self.assertNotIn("consensus_signature_scheme", committee)
+        self.assertNotIn("signature_scheme", committee)
         for authority in committee["authorities"].values():
             self.assertNotIn("consensus_key", authority)
         self.assertNotIn("--consensus-scheme", Vantage(cfg).keygen_cmd(0))
@@ -46,13 +46,13 @@ class ProtocolTests(unittest.TestCase):
 
     def test_post_quantum_committee_publishes_scheme_and_per_authority_key(self):
         cfg = RunConfig(nodes=2, rate=400, image="image",
-                        consensus_signature_scheme="ml-dsa-44")
+                        signature_scheme="ml-dsa-44")
         hosts = [Host(i, f"i-{i}", f"1.2.3.{i}", f"10.0.0.{i}") for i in range(2)]
         pubkeys = [{"name": f"pk{i}", "consensus_key": f"ml-dsa-44:key{i}"}
                    for i in range(2)]
         committee = Vantage(cfg).committee(hosts, pubkeys)
 
-        self.assertEqual(committee["consensus_signature_scheme"], "ml-dsa-44")
+        self.assertEqual(committee["signature_scheme"], "ml-dsa-44")
         self.assertEqual(
             committee["authorities"]["pk0"]["consensus_key"], "ml-dsa-44:key0")
         self.assertEqual(
@@ -60,7 +60,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_post_quantum_keygen_and_pubkey_commands(self):
         cfg = RunConfig(nodes=2, rate=400, image="img",
-                        consensus_signature_scheme="ml-dsa-65")
+                        signature_scheme="ml-dsa-65")
         adapter = Vantage(cfg)
 
         self.assertIn("--consensus-scheme ml-dsa-65", adapter.keygen_cmd(0))
@@ -73,30 +73,65 @@ class ProtocolTests(unittest.TestCase):
         for adapter_cls in (Vantage, AutobahnOptimistic, AutobahnSeamless,
                             SimpleIt, SimpleItBracha):
             cfg = RunConfig(nodes=4, rate=400, image="img",
-                            consensus_signature_scheme="ml-dsa-44",
+                            signature_scheme="ml-dsa-44",
                             all_to_all=adapter_cls is AutobahnOptimistic)
             adapter = adapter_cls(cfg)
             self.assertIn("--consensus-scheme ml-dsa-44", adapter.keygen_cmd(0),
                           adapter_cls.__name__)
             self.assertIsNotNone(adapter.consensus_pubkey_cmd(0),
                                  adapter_cls.__name__)
-        # Starfish selects its scheme through protocol_flags instead.
+        # Starfish mints its key material at genesis instead, so it has no
+        # per-node public-key command.
         starfish = RunConfig(nodes=4, rate=400, image="img",
-                             protocol="starfish", protocol_flags=["--consensus", "starfish"])
+                             protocol="starfish", signature_scheme="ml-dsa-44",
+                             protocol_flags=["--consensus", "starfish"])
         self.assertIsNone(Starfish(starfish).consensus_pubkey_cmd(0))
 
     def test_unknown_or_misapplied_consensus_scheme_is_rejected(self):
         cfg = RunConfig(nodes=4, rate=400, image="img", key_name="key",
-                        consensus_signature_scheme="rsa")
-        with self.assertRaisesRegex(ValueError, "consensus_signature_scheme"):
+                        signature_scheme="rsa")
+        with self.assertRaisesRegex(ValueError, "signature_scheme"):
             cfg.validate()
 
+
+    def test_starfish_carries_the_scheme_through_genesis_parameters(self):
+        cfg = RunConfig(nodes=4, rate=400, image="img", protocol="starfish",
+                        protocol_flags=["--consensus", "starfish"],
+                        signature_scheme="ml-dsa-65")
+        parameters = Starfish(cfg).node_parameters()
+
+        # benchmark-genesis mints the keys, so the scheme must be in the
+        # document it reads; it then propagates into public-config.yaml.
+        self.assertEqual(parameters["block_authentication"], "ml-dsa-65")
+        self.assertIn("mimic_latency", parameters)
+
+    def test_starfish_ed25519_genesis_document_is_unchanged(self):
+        cfg = RunConfig(nodes=4, rate=400, image="img", protocol="starfish",
+                        protocol_flags=["--consensus", "starfish"])
+        parameters = Starfish(cfg).node_parameters()
+
+        self.assertNotIn("block_authentication", parameters)
+        self.assertEqual(list(parameters), ["mimic_latency"])
+
+    def test_starfish_genesis_command_needs_no_scheme_argument(self):
+        cfg = RunConfig(nodes=4, rate=400, image="img", protocol="starfish",
+                        protocol_flags=["--consensus", "starfish"],
+                        signature_scheme="ml-dsa-44")
+        cmd = Starfish(cfg).genesis_cmd(["10.0.0.1", "10.0.0.2"])
+
+        # The scheme travels in the parameters file the command already reads.
+        self.assertIn("--node-parameters-path /wanbench/node-parameters.yaml", cmd)
+        self.assertNotIn("--block-authentication", cmd)
+
+    def test_a_scheme_is_accepted_for_both_binaries(self):
+        vantage = RunConfig(nodes=4, rate=400, image="img", key_name="key",
+                            signature_scheme="slh-dsa-sha2-128f")
         starfish = RunConfig(nodes=4, rate=400, image="img", key_name="key",
                              protocol="starfish",
                              protocol_flags=["--consensus", "starfish"],
-                             consensus_signature_scheme="ml-dsa-44")
-        with self.assertRaisesRegex(ValueError, "protocol_flags"):
-            starfish.validate()
+                             signature_scheme="slh-dsa-sha2-128f")
+        vantage.validate()
+        starfish.validate()
 
     def test_prometheus_scrape_interval_is_configurable_for_onset_debugging(self):
         yml = _prometheus_yml(["10.0.0.1:6003"], scrape_interval_s=5)

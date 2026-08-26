@@ -5,6 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 import json
 import pathlib
+import re
 import shlex
 import tempfile
 import time
@@ -48,7 +49,7 @@ def generate_keys(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host]) ->
             if not printed:
                 raise ValueError(
                     f"node {h.index}: no consensus public key for scheme "
-                    f"{cfg.consensus_signature_scheme}")
+                    f"{cfg.signature_scheme}")
             public["consensus_key"] = printed
         return public
 
@@ -150,7 +151,7 @@ def _deploy_starfish(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
                              "sudo chown $(id -u) /opt/wanbench")
             node_params = root / "node-parameters.yaml"
             node_params.write_text(json.dumps(
-                {"mimic_latency": cfg.wan.mode == "mimic"}, indent=2))
+                adapter.node_parameters(), indent=2))
             ssh.scp(control, str(node_params), "/opt/wanbench/node-parameters.yaml")
             ssh.run(control, f"sudo {adapter.genesis_cmd(ips)}", timeout=180)
 
@@ -160,6 +161,19 @@ def _deploy_starfish(ssh: Ssh, cfg: RunConfig, control: Host, hosts: list[Host],
         for name in (*common, *per_node):
             text = ssh.run(control, f"sudo cat /opt/wanbench/{name}")
             (root / name).write_text(text)
+
+        # A binary without block authentication ignores the unknown key in
+        # node-parameters.yaml, which would silently yield an Ed25519 fleet
+        # under a post-quantum label. Genesis echoes the scheme it actually
+        # used into public-config.yaml, so check it rather than trust it.
+        if cfg.signature_scheme != "ed25519":
+            published = (root / "public-config.yaml").read_text()
+            if not re.search(rf"^\s*block_authentication:\s*{re.escape(cfg.signature_scheme)}\s*$",
+                             published, re.MULTILINE):
+                raise ValueError(
+                    f"genesis did not apply signature_scheme "
+                    f"{cfg.signature_scheme!r}: public-config.yaml does not "
+                    f"name it. The image predates block authentication.")
 
         parameters = root / "parameters.yaml"
         parameters.write_text(json.dumps({
