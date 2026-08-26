@@ -1,0 +1,136 @@
+{
+  "aggregation": "Median node counter rate within each run; median run rate for the paper's approximate prose. Protocol units are not equivalent.",
+  "committee_size": 100,
+  "offered_tx_s": 100,
+  "variants": {
+    "autobahn-optimistic-a2a": {
+      "counter_units_per_opportunity": 1,
+      "median_opportunities_per_s": 8.234,
+      "metric": "network_messages_received_total",
+      "metric_label": "type=\"ConsensusRequest\"",
+      "repetitions": [
+        {
+          "median_counter_delta": 553.0,
+          "nodes": 100,
+          "opportunities_per_s": 8.049,
+          "source": "results/vantage/throughput/rep-1/autobahn-optimistic-a2a/rate-100",
+          "window_s": 68.7
+        },
+        {
+          "median_counter_delta": 576.0,
+          "nodes": 100,
+          "opportunities_per_s": 8.533,
+          "source": "results/vantage/throughput/rep-2/autobahn-optimistic-a2a/rate-100",
+          "window_s": 67.5
+        },
+        {
+          "median_counter_delta": 569.0,
+          "nodes": 100,
+          "opportunities_per_s": 8.234,
+          "source": "results/vantage/throughput/rep-3/autobahn-optimistic-a2a/rate-100",
+          "window_s": 69.1
+        }
+      ],
+      "unit": "consensus slots"
+    },
+    "autobahn-seamless": {
+      "counter_units_per_opportunity": 2,
+      "median_opportunities_per_s": 7.749,
+      "metric": "network_messages_received_total",
+      "metric_label": "type=\"ConsensusRequest\"",
+      "repetitions": [
+        {
+          "median_counter_delta": 1099.0,
+          "nodes": 100,
+          "opportunities_per_s": 7.964,
+          "source": "results/vantage/throughput/rep-1/autobahn-seamless/rate-100",
+          "window_s": 69.0
+        },
+        {
+          "median_counter_delta": 1068.0,
+          "nodes": 100,
+          "opportunities_per_s": 7.683,
+          "source": "results/vantage/throughput/rep-2/autobahn-seamless/rate-100",
+          "window_s": 69.5
+        },
+        {
+          "median_counter_delta": 1074.0,
+          "nodes": 100,
+          "opportunities_per_s": 7.749,
+          "source": "results/vantage/throughput/rep-3/autobahn-seamless/rate-100",
+          "window_s": 69.3
+        }
+      ],
+      "unit": "consensus slots"
+    },
+    "bluestreak": {
+      "counter_units_per_opportunity": 1,
+      "median_opportunities_per_s": 9.705,
+      "metric": "dag_highest_round",
+      "metric_label": null,
+      "repetitions": [
+        {
+          "median_counter_delta": 1184.0,
+          "nodes": 100,
+          "opportunities_per_s": 9.705,
+          "source": "results/vantage/throughput-starfish-anchors/rep-1/bluestreak/bluestreak/rate-100",
+          "window_s": 122.0
+        }
+      ],
+      "unit": "DAG rounds"
+    },
+    "sailfish-pp": {
+      "counter_units_per_opportunity": 1,
+      "median_opportunities_per_s": 4.417,
+      "metric": "dag_highest_round",
+      "metric_label": null,
+      "repetitions": [
+        {
+          "median_counter_delta": 535.0,
+          "nodes": 100,
+          "opportunities_per_s": 4.421,
+          "source": "results/vantage/throughput/rep-2/sailfish-pp/rate-100",
+          "window_s": 121.0
+        },
+        {
+          "median_counter_delta": 534.0,
+          "nodes": 100,
+          "opportunities_per_s": 4.413,
+          "source": "results/vantage/throughput-starfish-anchors/rep-1/sailfishpp/sailfish-pp/rate-100",
+          "window_s": 121.0
+        }
+      ],
+      "unit": "DAG rounds"
+    },
+    "vantage": {
+      "counter_units_per_opportunity": 1,
+      "median_opportunities_per_s": 13.901,
+      "metric": "vantage_entered_view",
+      "metric_label": null,
+      "repetitions": [
+        {
+          "median_counter_delta": 987.0,
+          "nodes": 100,
+          "opportunities_per_s": 13.708,
+          "source": "results/vantage/throughput/rep-1/vantage/rate-100",
+          "window_s": 72.0
+        },
+        {
+          "median_counter_delta": 898.0,
+          "nodes": 100,
+          "opportunities_per_s": 13.901,
+          "source": "results/vantage/throughput/rep-2/vantage/rate-100",
+          "window_s": 64.6
+        },
+        {
+          "median_counter_delta": 1047.0,
+          "nodes": 100,
+          "opportunities_per_s": 14.111,
+          "source": "results/vantage/throughput/rep-3/vantage/rate-100",
+          "window_s": 74.2
+        }
+      ],
+      "unit": "proposal views"
+    }
+  }
+}
